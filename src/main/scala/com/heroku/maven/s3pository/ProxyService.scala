@@ -8,15 +8,15 @@ import com.twitter.finagle.builder.ClientBuilder
 import com.twitter.conversions.time._
 import collection.immutable.HashMap
 import collection.mutable.{HashMap => MMap}
-import org.jboss.netty.buffer.ChannelBuffer
 import org.joda.time.format.DateTimeFormat
-import org.joda.time.{DateTime, DateTimeZone}
 import javax.crypto.spec.SecretKeySpec
 import javax.crypto.Mac
 import java.util.logging.Logger
 import collection.JavaConversions._
 import com.twitter.util._
 import org.jboss.netty.handler.codec.http._
+import org.joda.time.{DateTime, DateTimeZone}
+import org.jboss.netty.buffer.{ChannelBuffers, ChannelBuffer}
 
 case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String)
 
@@ -24,6 +24,7 @@ case class HitTracker(client: Client, future: Future[HttpResponse])
 
 case class RepositoryGroup(prefix: String, repos: List[ProxiedRepository]) {
   val hits = new MMap[String, ProxiedRepository]
+  val misses = new MMap[String, DateTime]
 }
 
 case class Client(repoService: Service[HttpRequest, HttpResponse], s3Service: Service[HttpRequest, HttpResponse], repo: ProxiedRepository)
@@ -124,39 +125,64 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       }
       /*group dosent have a hit, iterate through and try and find the contentUri in a proxy*/
       case None => {
-        val trackers = group.repos.map {
-          repo => {
-            val client = clients.get(repo.prefix).get
-            log.info("parallel request for %s to %s".format(contentUri, repo.host))
-            val future = singleRepoRequest(client, contentUri, cloneRequest(request)).within(timer, 10.seconds) handle {
-              case _: TimeoutException => timeout
-            }
-            HitTracker(client, future)
+        group.misses.get(contentUri) match {
+          case None => groupParallelRequest(group,contentUri,request)
+          case Some(time) if(time.plusMinutes(30).isBeforeNow) => {
+            log.info("invalidating cached miss for %s".format(contentUri))
+            group.misses.remove(contentUri)
+            groupParallelRequest(group,contentUri,request)
+          }
+          case _ => {
+            log.info("returning 404, cached miss for %s".format(contentUri))
+            new Promise[HttpResponse](Return(notFound))
           }
         }
-
-        var finalResponse: Future[HttpResponse] = null
-
-        trackers.foreach {
-          tracker => {
-            val response = tracker.future.get()
-            response.getStatus.getCode match {
-              case code if (code == 200 && finalResponse == null) => {
-                group.hits += (contentUri -> tracker.client.repo)
-                finalResponse = new Promise[HttpResponse](Return(response))
-                ()
-              }
-              case code => ()
-            }
-          }
-        }
-
-        finalResponse
-
       }
     }
   }
 
+  def groupParallelRequest(group: RepositoryGroup, contentUri: String, request: HttpRequest):Future[HttpResponse]={
+    val trackers = group.repos.map {
+              repo => {
+                val client = clients.get(repo.prefix).get
+                log.info("parallel request for %s to %s".format(contentUri, repo.host))
+                val future = singleRepoRequest(client, contentUri, cloneRequest(request)).within(timer, 10.seconds) handle {
+                  case _: TimeoutException => timeout
+                }
+                HitTracker(client, future)
+              }
+            }
+
+            var finalPromise: Future[HttpResponse] = null
+            var finalResponse: HttpResponse = null
+            var finalCode = 0
+            trackers.foreach {
+              tracker => {
+                val response = tracker.future.get()
+                response.getStatus.getCode match {
+                  case code if (code == 200 && finalCode != 200) => {
+                    group.hits += (contentUri -> tracker.client.repo)
+                    finalPromise = new Promise[HttpResponse](Return(response))
+                    finalResponse = response
+                    finalCode = 200
+                    ()
+                  }
+                  case code if (finalCode == 0) => {
+                    finalPromise = new Promise[HttpResponse](Return(response))
+                    finalResponse = response
+                    finalCode = code
+                  }
+                  case _ => ()
+                }
+              }
+            }
+            if(finalCode == 404){
+              log.info("caching miss for %s".format(contentUri))
+              group.misses += (contentUri -> new DateTime())
+            }
+            finalPromise
+
+  }
 
   def singleRepoRequest(client: Client, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
     val s3request: DefaultHttpRequest = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, contentUri)
@@ -182,7 +208,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
                   val s3buffer = response.getContent.duplicate()
                   putS3(client, request, contentUri, response.getHeader("Content-Type"), s3buffer)
                 } else {
-                  log.warning("Request to Source repo %s: path: %s Status Code: %s".format(client.repo.host, request.getUri, response.getStatus.getReasonPhrase))
+                  log.warning("Request to Source repo %s: path: %s Status Code: %s".format(client.repo.host, request.getUri, response.getStatus.getCode))
                 }
                 new Promise[HttpResponse](Return(response))
               }
@@ -255,9 +281,35 @@ object ProxyService {
 
   val ALGORITHM = "HmacSHA1"
 
-  def notFound = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.NOT_FOUND)
+  def notFound = {
+    val resp = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.NOT_FOUND)
+    resp.setContent(ChannelBuffers.wrappedBuffer(
+    """
+    <html>
+    <head><title>404 Not Found</title></head>
+    <body>
+    <h2>404 Not Found</h2>
+    </body>
+    </html>
+    """.getBytes
+    ))
+    resp
+  }
 
-  def timeout = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.GATEWAY_TIMEOUT)
+  def timeout = {
+    val resp = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.GATEWAY_TIMEOUT)
+    resp.setContent(ChannelBuffers.wrappedBuffer(
+    """
+    <html>
+    <head><title>504 GatewayTimeout</title></head>
+    <body>
+    <h2>504 Gateway Timeout</h2>
+    </body>
+    </html>
+    """.getBytes
+    ))
+    resp
+  }
 
   def cloneRequest(request: HttpRequest): HttpRequest = {
     val cloned = new DefaultHttpRequest(request.getProtocolVersion, request.getMethod, request.getUri)
