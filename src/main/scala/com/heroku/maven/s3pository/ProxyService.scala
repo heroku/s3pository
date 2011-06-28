@@ -17,7 +17,6 @@ import com.twitter.util._
 import org.jboss.netty.handler.codec.http._
 import org.joda.time.{DateTime, DateTimeZone}
 import org.jboss.netty.buffer.{ChannelBuffers, ChannelBuffer}
-import reflect.generic.Trees.Return
 
 case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String)
 
