@@ -62,7 +62,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       .sendBufferSize(1048576)
       .recvBufferSize(1048576)
       .hosts(new InetSocketAddress(host, 80))
-      .hostConnectionLimit(10)
+      .hostConnectionLimit(100)
       .logger(Logger.getLogger("finagle.client"))
       .build()
   }
@@ -155,41 +155,30 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       }
     }
 
-    var finalPromise: Future[HttpResponse] = null
-    var finalResponse: HttpResponse = null
-    var finalCode = 0
-    trackers.foreach {
-      tracker => {
+    new Promise[HttpResponse](Return(firstAcceptableResponse(trackers)(group, contentUri)))
+
+  }
+
+  def firstAcceptableResponse(trackers: List[HitTracker])(implicit group: RepositoryGroup, contentUri: String): HttpResponse = {
+    trackers.headOption match {
+      case Some(tracker) => {
         val response = {
-          try{
-          tracker.future.get()
+          try {
+            tracker.future.get()
           } catch {
             case _ => notFound
           }
         }
-        response.getStatus.getCode match {
-          case code if (code == 200 && finalCode != 200) => {
-            group.hits += (contentUri -> tracker.client.repo)
-            finalPromise = new Promise[HttpResponse](Return(response))
-            finalResponse = response
-            finalCode = 200
-            ()
-          }
-          case code if (finalCode == 0) => {
-            finalPromise = new Promise[HttpResponse](Return(response))
-            finalResponse = response
-            finalCode = code
-          }
-          case _ => ()
+        if (response.getStatus.getCode == 200) {
+          group.hits += (contentUri -> tracker.client.repo)
+          trackers.tail.foreach(_.future.cancel())
+          response
+        } else {
+          firstAcceptableResponse(trackers.tail)
         }
       }
+      case None => notFound
     }
-    if (finalCode == 404) {
-      log.info("caching miss for %s".format(contentUri))
-      group.misses += (contentUri -> new DateTime())
-    }
-    finalPromise
-
   }
 
   def singleRepoRequest(client: Client, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
@@ -210,7 +199,9 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
             request.setHeader("Host", client.repo.host)
             val responseFuture = client.repoService(request).onFailure {
               ex =>
-                log.severe("request to %s threw %s, returning 404".format(client.repo.host, ex.getStackTraceString))
+                if (!ex.isInstanceOf[Future.CancelledException]) {
+                  log.severe("request to %s threw %s, returning 404".format(client.repo.host, ex.getStackTraceString))
+                }
                 new Promise[HttpResponse](Return(notFound))
             }
             responseFuture.flatMap {
