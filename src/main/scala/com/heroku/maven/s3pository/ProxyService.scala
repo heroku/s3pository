@@ -15,8 +15,8 @@ import javax.crypto.spec.SecretKeySpec
 import javax.crypto.Mac
 import java.util.logging.Logger
 import collection.JavaConversions._
-import org.jboss.netty.handler.codec.http._
 import com.twitter.util._
+import org.jboss.netty.handler.codec.http._
 
 case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String)
 
@@ -44,6 +44,8 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     }
   }
 
+  clients.values.foreach(createBucket(_))
+
   val repositoryGroups: HashMap[String, RepositoryGroup] = {
     groups.foldLeft(new HashMap[String, RepositoryGroup]) {
       (m, g) => m + (g.prefix -> g)
@@ -58,71 +60,106 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       .recvBufferSize(1048576)
       .hosts(new InetSocketAddress(host, 80))
       .hostConnectionLimit(10)
-      .logger(Logger.getLogger("client"))
+      .logger(Logger.getLogger("finagle.client"))
       .build()
+  }
+
+  def createBucket(client: Client) {
+    log.fine("creating bucket: %s".format(client.repo.bucket))
+    val s3request = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.PUT, "/")
+    s3request.setHeader("Host", client.repo.bucket + ".s3.amazonaws.com")
+    s3request.setHeader("Date", date)
+    s3request.setHeader("Content-Length", "0")
+    s3request.setHeader("Authorization", "AWS " + s3key + ":" + sign(s3Secret, s3request, client.repo.bucket))
+    client.s3Service(s3request) onSuccess {
+      response =>
+        if (response.getStatus.getCode != 200) {
+          log.info("Create Bucket %s return code %d".format(client.repo.bucket, response.getStatus.getCode))
+          log.info(response.getContent.toString("UTF-8"))
+        } else {
+          log.fine("Create Bucket %s return code %d".format(client.repo.bucket, response.getStatus.getCode))
+        }
+    } onFailure {
+      ex =>
+        log.warning("failure while creating bucket:%s".format(ex.getStackTraceString))
+    } onCancellation {
+      log.warning("create bucket: %s was cancelled".format(client.repo.bucket))
+    }
   }
 
 
   def apply(request: HttpRequest) = {
+    log.info("Request for: %s".format(request.getUri))
     val prefix = getPrefix(request)
     val contentUri = getContentUri(prefix, request.getUri)
     repositoryGroups.get(prefix) match {
       /*request matches a group*/
       case Some(group) => {
-        group.hits.get(contentUri) match {
-          /*group has a hit for the contentUri so go directly to the right proxy*/
-          case Some(proxiedRepo) => {
-            log.info("%s cache hit on %s".format(contentUri, proxiedRepo.host))
-            singleRepo(clients.get(proxiedRepo.prefix).get, contentUri, request)
-          }
-          /*group dosent have a hit, iterate through and try and find the content in a proxy*/
-          case None => {
-
-            val trackers = group.repos.map {
-              repo => {
-                val client = clients.get(repo.prefix).get
-                val future = singleRepo(client, contentUri, cloneRequest(request)).within(timer,10.seconds) handle {
-                  case _: TimeoutException => timeout
-                }
-                HitTracker(client, future)
-              }
-            }
-
-            var finalResponse: Future[HttpResponse] = null
-
-            trackers.foreach {
-              tracker => {
-                val response = tracker.future.get()
-                response.getStatus.getCode match {
-                  case code if (code == 200 && finalResponse == null) => {
-                    group.hits += (contentUri -> tracker.client.repo)
-                    finalResponse = new Promise[HttpResponse](Return(response))
-                    ()
-                  }
-                  case _ => ()
-                }
-              }
-            }
-
-            finalResponse
-
-          }
-        }
+        log.info("Group request: %s".format(group.prefix))
+        groupRepoRequest(group, contentUri, request)
       }
       case None => {
         clients.get(prefix) match {
           /*request matches a single proxied repo*/
-          case Some(client) => singleRepo(client, contentUri, request)
+          case Some(client) => {
+            log.info("Single repo request: %s".format(prefix))
+            singleRepoRequest(client, contentUri, request)
+          }
           /*no match*/
-          case None => Future.value(notFound)
+          case None => {
+            log.info("Unknown prefix: %s".format(prefix))
+            Future.value(notFound)
+          }
         }
       }
     }
   }
 
+  def groupRepoRequest(group: RepositoryGroup, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
+    group.hits.get(contentUri) match {
+      /*group has a hit for the contentUri so go directly to the right proxy*/
+      case Some(proxiedRepo) => {
+        log.info("%s cache hit on %s".format(contentUri, proxiedRepo.host))
+        singleRepoRequest(clients.get(proxiedRepo.prefix).get, contentUri, request)
+      }
+      /*group dosent have a hit, iterate through and try and find the contentUri in a proxy*/
+      case None => {
+        val trackers = group.repos.map {
+          repo => {
+            val client = clients.get(repo.prefix).get
+            log.info("parallel request for %s to %s".format(contentUri, repo.host))
+            val future = singleRepoRequest(client, contentUri, cloneRequest(request)).within(timer, 10.seconds) handle {
+              case _: TimeoutException => timeout
+            }
+            HitTracker(client, future)
+          }
+        }
 
-  def singleRepo(client: Client, content: String, request: HttpRequest): Future[HttpResponse] = {
-    val s3request: DefaultHttpRequest = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, content)
+        var finalResponse: Future[HttpResponse] = null
+
+        trackers.foreach {
+          tracker => {
+            val response = tracker.future.get()
+            response.getStatus.getCode match {
+              case code if (code == 200 && finalResponse == null) => {
+                group.hits += (contentUri -> tracker.client.repo)
+                finalResponse = new Promise[HttpResponse](Return(response))
+                ()
+              }
+              case code => ()
+            }
+          }
+        }
+
+        finalResponse
+
+      }
+    }
+  }
+
+
+  def singleRepoRequest(client: Client, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
+    val s3request: DefaultHttpRequest = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, contentUri)
     s3request.setHeader("Host", client.repo.bucket + ".s3.amazonaws.com")
     s3request.setHeader("Date", date)
     s3request.setHeader("Authorization", "AWS " + s3key + ":" + sign(s3Secret, s3request, client.repo.bucket))
@@ -130,19 +167,20 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       s3response => {
         s3response.getStatus.getCode match {
           case code if (code == 200) => {
-            log.info("SERVING FROM S3:" + content)
+            log.info("Serving from S3 bucket %s: %s".format(client.repo.bucket, contentUri))
             new Promise[HttpResponse](Return(s3response))
           }
           case code if (code == 404) => {
-            val uri = client.repo.hostPath + content
+            val uri = client.repo.hostPath + contentUri
             request.setUri(uri)
             request.setHeader("Host", client.repo.host)
             val responseFuture = client.repoService(request)
             responseFuture.flatMap {
               response => {
                 if (response.getStatus == HttpResponseStatus.OK) {
+                  log.info("Serving from Source %s: %s".format(client.repo.host, contentUri))
                   val s3buffer = response.getContent.duplicate()
-                  putS3(client, request, content, response.getHeader("Content-Type"), s3buffer)
+                  putS3(client, request, contentUri, response.getHeader("Content-Type"), s3buffer)
                 } else {
                   log.warning("Request to Source repo %s: path: %s Status Code: %s".format(client.repo.host, request.getUri, response.getStatus.getReasonPhrase))
                 }
