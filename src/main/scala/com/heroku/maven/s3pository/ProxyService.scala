@@ -201,7 +201,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
               ex =>
                 if (!ex.isInstanceOf[Future.CancelledException]) {
                   log.severe("request to %s for %s threw %s, returning 404".format(client.repo.host, request.getUri, ex.getClass.getSimpleName))
-                  log.fine(ex.getMessage + ex.getStackTraceString)
+                  log.severe(ex.getMessage + ex.getStackTraceString)
                 }
                 new Promise[HttpResponse](Return(notFound))
             }
