@@ -6,7 +6,7 @@ scalaVersion := "2.8.1"
 
 resolvers += "twitter.com" at "http://maven.twttr.com"
 
-mainClass := Some("com.heroku.maven.s3pository.Server")
+mainClass := Some("com.heroku.maven.s3pository.S3rver")
 
 libraryDependencies ++= Seq(
 	"com.twitter" % "finagle-core" % "1.6.1" withSources(),
