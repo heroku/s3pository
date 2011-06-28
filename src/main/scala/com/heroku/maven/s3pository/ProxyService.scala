@@ -11,12 +11,12 @@ import collection.mutable.{HashMap => MMap}
 import org.joda.time.format.DateTimeFormat
 import javax.crypto.spec.SecretKeySpec
 import javax.crypto.Mac
-import java.util.logging.Logger
 import collection.JavaConversions._
 import com.twitter.util._
 import org.jboss.netty.handler.codec.http._
 import org.joda.time.{DateTime, DateTimeZone}
 import org.jboss.netty.buffer.{ChannelBuffers, ChannelBuffer}
+import java.util.logging.{Level, Logger}
 
 case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String)
 
@@ -85,7 +85,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
         }
     } onFailure {
       ex =>
-        log.warning("failure while creating bucket:%s".format(ex.getStackTraceString))
+        log.log(Level.SEVERE, "failure while creating bucket:%s".format(client.repo.bucket), ex)
     } onCancellation {
       log.warning("create bucket: %s was cancelled".format(client.repo.bucket))
     }
@@ -201,8 +201,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
             val responseFuture = client.repoService(request).onFailure {
               ex =>
                 if (!ex.isInstanceOf[Future.CancelledException]) {
-                  log.severe("request to %s for %s threw %s, returning 404".format(client.repo.host, request.getUri, ex.getClass.getSimpleName))
-                  log.severe(ex.getMessage + ex.getStackTraceString)
+                  log.log(Level.SEVERE, "request to %s for %s threw %s, returning 404".format(client.repo.host, request.getUri, ex.getClass.getSimpleName), ex)
                 }
                 new Promise[HttpResponse](Return(notFound))
             }
@@ -244,7 +243,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     } onSuccess {
       resp => log.info("S3Put Success: Code %s, Content %s ".format(resp.getStatus.getReasonPhrase, resp.getContent.toString("UTF-8")))
     } onFailure {
-      ex => log.severe("Exception in S3 Put: " + ex.getStackTraceString)
+      ex => log.log(Level.SEVERE, "Exception in S3 Put: ", ex)
     } onCancellation {
       log.severe("S3Put cancelled" + s3Put.toString)
     }
