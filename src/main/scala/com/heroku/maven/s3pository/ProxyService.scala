@@ -128,11 +128,11 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       /*group dosent have a hit, iterate through and try and find the contentUri in a proxy*/
       case None => {
         group.misses.get(contentUri) match {
-          case None => groupParallelRequest(group,contentUri,request)
-          case Some(time) if(time.plusMinutes(30).isBeforeNow) => {
+          case None => groupParallelRequest(group, contentUri, request)
+          case Some(time) if (time.plusMinutes(30).isBeforeNow) => {
             log.info("invalidating cached miss for %s".format(contentUri))
             group.misses.remove(contentUri)
-            groupParallelRequest(group,contentUri,request)
+            groupParallelRequest(group, contentUri, request)
           }
           case _ => {
             log.info("returning 404, cached miss for %s".format(contentUri))
@@ -143,46 +143,46 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     }
   }
 
-  def groupParallelRequest(group: RepositoryGroup, contentUri: String, request: HttpRequest):Future[HttpResponse]={
+  def groupParallelRequest(group: RepositoryGroup, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
     val trackers = group.repos.map {
-              repo => {
-                val client = clients.get(repo.prefix).get
-                log.info("parallel request for %s to %s".format(contentUri, repo.host))
-                val future = singleRepoRequest(client, contentUri, cloneRequest(request)).within(timer, 10.seconds) handle {
-                  case _: TimeoutException => timeout
-                }
-                HitTracker(client, future)
-              }
-            }
+      repo => {
+        val client = clients.get(repo.prefix).get
+        log.info("parallel request for %s to %s".format(contentUri, repo.host))
+        val future = singleRepoRequest(client, contentUri, cloneRequest(request)).within(timer, 10.seconds) handle {
+          case _: TimeoutException => timeout
+        }
+        HitTracker(client, future)
+      }
+    }
 
-            var finalPromise: Future[HttpResponse] = null
-            var finalResponse: HttpResponse = null
-            var finalCode = 0
-            trackers.foreach {
-              tracker => {
-                val response = tracker.future.get()
-                response.getStatus.getCode match {
-                  case code if (code == 200 && finalCode != 200) => {
-                    group.hits += (contentUri -> tracker.client.repo)
-                    finalPromise = new Promise[HttpResponse](Return(response))
-                    finalResponse = response
-                    finalCode = 200
-                    ()
-                  }
-                  case code if (finalCode == 0) => {
-                    finalPromise = new Promise[HttpResponse](Return(response))
-                    finalResponse = response
-                    finalCode = code
-                  }
-                  case _ => ()
-                }
-              }
-            }
-            if(finalCode == 404){
-              log.info("caching miss for %s".format(contentUri))
-              group.misses += (contentUri -> new DateTime())
-            }
-            finalPromise
+    var finalPromise: Future[HttpResponse] = null
+    var finalResponse: HttpResponse = null
+    var finalCode = 0
+    trackers.foreach {
+      tracker => {
+        val response = tracker.future.get()
+        response.getStatus.getCode match {
+          case code if (code == 200 && finalCode != 200) => {
+            group.hits += (contentUri -> tracker.client.repo)
+            finalPromise = new Promise[HttpResponse](Return(response))
+            finalResponse = response
+            finalCode = 200
+            ()
+          }
+          case code if (finalCode == 0) => {
+            finalPromise = new Promise[HttpResponse](Return(response))
+            finalResponse = response
+            finalCode = code
+          }
+          case _ => ()
+        }
+      }
+    }
+    if (finalCode == 404) {
+      log.info("caching miss for %s".format(contentUri))
+      group.misses += (contentUri -> new DateTime())
+    }
+    finalPromise
 
   }
 
@@ -268,7 +268,12 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
 
   def getPrefix(request: HttpRequest): String = {
     val uri = request.getUri.substring(1)
-    "/" + uri.substring(0, uri.indexOf("/"))
+    val index = uri.indexOf("/")
+    if (index != -1) {
+      "/" + uri.substring(0, index)
+    } else {
+      "unknown prefix"
+    }
   }
 
   def getContentUri(prefix: String, source: String): String = {
@@ -286,14 +291,14 @@ object ProxyService {
   def notFound = {
     val resp = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.NOT_FOUND)
     resp.setContent(ChannelBuffers.wrappedBuffer(
-    """
-    <html>
-    <head><title>404 Not Found</title></head>
-    <body>
-    <h2>404 Not Found</h2>
-    </body>
-    </html>
-    """.getBytes
+      """
+      <html>
+      <head><title>404 Not Found</title></head>
+      <body>
+      <h2>404 Not Found</h2>
+      </body>
+      </html>
+      """.getBytes
     ))
     resp
   }
@@ -301,14 +306,14 @@ object ProxyService {
   def timeout = {
     val resp = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.GATEWAY_TIMEOUT)
     resp.setContent(ChannelBuffers.wrappedBuffer(
-    """
-    <html>
-    <head><title>504 GatewayTimeout</title></head>
-    <body>
-    <h2>504 Gateway Timeout</h2>
-    </body>
-    </html>
-    """.getBytes
+      """
+      <html>
+      <head><title>504 GatewayTimeout</title></head>
+      <body>
+      <h2>504 Gateway Timeout</h2>
+      </body>
+      </html>
+      """.getBytes
     ))
     resp
   }
