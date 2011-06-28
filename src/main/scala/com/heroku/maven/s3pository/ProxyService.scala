@@ -34,6 +34,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   import ProxyService._
 
   val log = Logger.getLogger(getClass.getName)
+  log.info("creating ProxyService")
 
   val timer = new JavaTimer(true)
 
@@ -46,6 +47,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   }
 
   clients.values.foreach(createBucket(_))
+  log.info("S3 Buckets verified")
 
   val repositoryGroups: HashMap[String, RepositoryGroup] = {
     groups.foldLeft(new HashMap[String, RepositoryGroup]) {

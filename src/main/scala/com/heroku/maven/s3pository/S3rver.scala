@@ -45,6 +45,7 @@ object S3rver {
       .name("s3pository")
       .logger(Logger.getLogger("finagle.server"))
       .build(service)
+    log.info("S3rver started")
   }
 }
 
