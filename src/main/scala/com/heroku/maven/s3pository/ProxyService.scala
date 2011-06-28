@@ -202,7 +202,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
             val uri = client.repo.hostPath + contentUri
             request.setUri(uri)
             request.setHeader("Host", client.repo.host)
-            val responseFuture = client.repoService(request).onFailure{
+            val responseFuture = client.repoService(request).onFailure {
               ex =>
                 log.severe("request to %s threw %s, returning 404".format(client.repo.host, ex.getStackTraceString))
                 new Promise[HttpResponse](Return(notFound))
@@ -281,7 +281,11 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   }
 
   def getContentUri(prefix: String, source: String): String = {
-    source.substring(source.indexOf(prefix) + prefix.length())
+    if (source.contains(prefix)) {
+      source.substring(source.indexOf(prefix) + prefix.length())
+    } else {
+      source
+    }
   }
 }
 
