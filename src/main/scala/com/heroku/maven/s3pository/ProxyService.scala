@@ -62,7 +62,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       .sendBufferSize(1048576)
       .recvBufferSize(1048576)
       .hosts(new InetSocketAddress(host, 80))
-      .hostConnectionLimit(100)
+      .hostConnectionLimit(Integer.MAX_VALUE)
       .logger(Logger.getLogger("finagle.client"))
       .build()
   }
