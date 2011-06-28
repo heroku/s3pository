@@ -17,6 +17,7 @@ import com.twitter.util._
 import org.jboss.netty.handler.codec.http._
 import org.joda.time.{DateTime, DateTimeZone}
 import org.jboss.netty.buffer.{ChannelBuffers, ChannelBuffer}
+import reflect.generic.Trees.Return
 
 case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String)
 
@@ -202,7 +203,11 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
             val uri = client.repo.hostPath + contentUri
             request.setUri(uri)
             request.setHeader("Host", client.repo.host)
-            val responseFuture = client.repoService(request)
+            val responseFuture = client.repoService(request).onFailure{
+              ex =>
+                log.severe("request to %s threw %s, returning 404".format(client.repo.host, ex.getStackTraceString))
+                new Promise[HttpResponse](Return(notFound))
+            }
             responseFuture.flatMap {
               response => {
                 if (response.getStatus == HttpResponseStatus.OK) {
