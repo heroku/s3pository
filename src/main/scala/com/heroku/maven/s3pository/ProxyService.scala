@@ -80,7 +80,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
           log.info("Create Bucket %s return code %d".format(client.repo.bucket, response.getStatus.getCode))
           log.info(response.getContent.toString("UTF-8"))
         } else {
-          log.fine("Create Bucket %s return code %d".format(client.repo.bucket, response.getStatus.getCode))
+          log.info("Create Bucket %s return code %d".format(client.repo.bucket, response.getStatus.getCode))
         }
     } onFailure {
       ex =>
