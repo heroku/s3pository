@@ -20,7 +20,7 @@ object S3rver {
     //val jboss = ProxiedRepository("/spring-milestones", "repository.jboss.org", "/nexus/content/repositories/releases", "sclasen-proxy-jboss")
     val forceReleases = ProxiedRepository("/force-releases", "repo.t.salesforce.com", "/archiva/repository/releases", "sclasen-proxy-force-releases")
     val forceSnapshots = ProxiedRepository("/force-milestones", "repo.t.salesforce.com", "/archiva/repository/snapshots", "sclasen-proxy-force-snapshots")
-    val datanucleus = ProxiedRepository("/datanucleus", "www.datanucleus.org/", "downloads/maven2", "sclasen-proxy-datanucleus")
+    val datanucleus = ProxiedRepository("/datanucleus", "www.datanucleus.org", "downloads/maven2", "sclasen-proxy-datanucleus")
     val typesafe = ProxiedRepository("/typesafe-releases", "repo.typesafe.com", "/typesafe/maven-releases", "sclasen-proxy-typesafe-releases")
     val typesafeSnapshots = ProxiedRepository("/typesafe-snapshots", "repo.typesafe.com", "/typesafe/maven-snapshots", "sclasen-proxy-typesafe-snapshots")
     val proxies = List(central, springReleases,springMilestones,springRoo,forceReleases,forceSnapshots,datanucleus,typesafe,typesafeSnapshots)
