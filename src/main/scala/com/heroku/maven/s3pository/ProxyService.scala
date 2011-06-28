@@ -160,7 +160,13 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     var finalCode = 0
     trackers.foreach {
       tracker => {
-        val response = tracker.future.get()
+        val response = {
+          try{
+          tracker.future.get()
+          } catch {
+            case _ => notFound
+          }
+        }
         response.getStatus.getCode match {
           case code if (code == 200 && finalCode != 200) => {
             group.hits += (contentUri -> tracker.client.repo)
