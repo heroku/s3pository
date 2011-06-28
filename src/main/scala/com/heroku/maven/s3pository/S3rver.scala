@@ -12,6 +12,7 @@ object S3rver {
   def main(args: Array[String]) {
     LogManager.getLogManager.readConfiguration(getClass.getClassLoader.getResourceAsStream("logging.properties"))
     val log = Logger.getLogger("S3Server-Main")
+    log.info("Starting S3rver")
     val central = ProxiedRepository("/central", "repo1.maven.org", "/maven2", "sclasen-proxy-central")
     val springReleases = ProxiedRepository("/spring-releases", "maven.springframework.org", "/release", "sclasen-proxy-spring-releases")
     val springMilestones = ProxiedRepository("/spring-milestones", "maven.springframework.org", "/milestone", "sclasen-proxy-spring-milestones")
@@ -45,6 +46,7 @@ object S3rver {
       .name("s3pository")
       .logger(Logger.getLogger("finagle.server"))
       .build(service)
+
     log.info("S3rver started")
   }
 }
