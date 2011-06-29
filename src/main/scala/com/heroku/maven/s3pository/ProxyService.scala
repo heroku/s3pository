@@ -1,23 +1,28 @@
 package com.heroku.maven.s3pository
 
-import com.twitter.finagle.http.Http
-import java.net.InetSocketAddress
-import com.twitter.finagle.builder.ClientBuilder
 import com.twitter.conversions.time._
+import com.twitter.util._
+import com.twitter.finagle.{ServiceFactory, Service}
+import com.twitter.finagle.http.Http
+import com.twitter.finagle.builder.ClientBuilder
+
 import collection.immutable.HashMap
 import collection.mutable.{HashMap => MMap}
-import org.joda.time.format.DateTimeFormat
+import collection.JavaConversions._
+
+import java.util.logging.{Level, Logger}
+import java.net.InetSocketAddress
 import javax.crypto.spec.SecretKeySpec
 import javax.crypto.Mac
-import collection.JavaConversions._
-import com.twitter.util._
-import org.jboss.netty.handler.codec.http._
-import org.joda.time.{DateTime, DateTimeZone}
-import org.jboss.netty.buffer.{ChannelBuffers, ChannelBuffer}
-import java.util.logging.{Level, Logger}
-import com.twitter.finagle.{ServiceFactory, Service}
 
-case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String, port:Int = 80, ssl:Boolean=false)
+import org.joda.time.{DateTime, DateTimeZone}
+import org.joda.time.format.DateTimeFormat
+
+import org.jboss.netty.buffer.{ChannelBuffers, ChannelBuffer}
+import org.jboss.netty.handler.codec.http._
+
+
+case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String, port: Int = 80, ssl: Boolean = false)
 
 case class HitTracker(client: Client, future: Future[HttpResponse])
 
@@ -53,8 +58,8 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       (m, g) => m + (g.prefix -> g)
     }
   }
-
-  def clientService(host: String, port:Int, ssl:Boolean): ServiceFactory[HttpRequest, HttpResponse] = {
+  /*Build a Client ServiceFactory for the given endpoint*/
+  def clientService(host: String, port: Int, ssl: Boolean): ServiceFactory[HttpRequest, HttpResponse] = {
     import com.twitter.conversions.storage._
     var builder = ClientBuilder()
       .codec(Http(_maxRequestSize = 100.megabytes, _maxResponseSize = 100.megabyte))
@@ -65,10 +70,11 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       .hostConnectionMaxIdleTime(5.seconds)
       .name(host)
       .logger(Logger.getLogger("finagle.client"))
-    if(ssl)(builder = builder.tlsWithoutValidation())
+    if (ssl) (builder = builder.tlsWithoutValidation())
     builder.buildFactory()
   }
 
+  /*Create any missing S3 buckets. Create bucket is idempotent, and returns a 200 if the bucket exists or is created*/
   def createBucket(client: Client) {
     log.fine("creating bucket: %s".format(client.repo.bucket))
     val s3request = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.PUT, "/")
@@ -92,7 +98,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     }
   }
 
-
+  /*main service function for ProxyService, this handles all incoming requests*/
   def apply(request: HttpRequest) = {
     log.info("Request for: %s".format(request.getUri))
     val prefix = getPrefix(request)
@@ -127,15 +133,18 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
         log.info("%s cache hit on %s".format(contentUri, proxiedRepo.host))
         singleRepoRequest(clients.get(proxiedRepo.prefix).get, contentUri, request)
       }
-      /*group dosent have a hit, iterate through and try and find the contentUri in a proxy*/
+      /*group dosent have a hit, try and find the contentUri in one of the groups proxies*/
       case None => {
         group.misses.get(contentUri) match {
+          /*no cached misses, do a parallel request to the group proxies*/
           case None => groupParallelRequest(group, contentUri, request)
+          /*cached missed is timed out, remove the cache entry and do a parallel request to the group proxies*/
           case Some(time) if (time.plusMinutes(30).isBeforeNow) => {
             log.info("invalidating cached miss for %s".format(contentUri))
             group.misses.remove(contentUri)
             groupParallelRequest(group, contentUri, request)
           }
+          /*we have a valid cached miss, so return 404*/
           case _ => {
             log.info("returning 404, cached miss for %s".format(contentUri))
             Future.value(notFound)
@@ -145,11 +154,13 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     }
   }
 
+  /*do a parallel request to the group proxies, and return the first acceptale request */
   def groupParallelRequest(group: RepositoryGroup, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
     val trackers = group.repos.map {
       repo => {
         val client = clients.get(repo.prefix).get
         log.info("parallel request for %s to %s".format(contentUri, repo.host))
+        /*clone the request and send to the proxied repo that will timeout and return a 504 after 10 seconds*/
         val future = singleRepoRequest(client, contentUri, cloneRequest(request)).within(timer, 10.seconds) handle {
           case _: TimeoutException => timeout
         }
@@ -161,17 +172,23 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
 
   }
 
+  /*
+  return the fisrt acceptable response (200) from the list of requests.
+  The list is ordered by the repositories precedence, so we block for the response on the head of the list
+  */
   def firstAcceptableResponse(trackers: List[HitTracker])(implicit group: RepositoryGroup, contentUri: String): HttpResponse = {
     trackers.headOption match {
       case Some(tracker) => {
         val response = {
           try {
+            /*block for response*/
             tracker.future.get()
           } catch {
             case _ => notFound
           }
         }
         if (response.getStatus.getCode == 200) {
+          /*got a good response, cache the repo that gave us this hit, cancel the rest of the requests, and return the response*/
           group.hits += (contentUri -> tracker.client.repo)
           trackers.tail.foreach(_.future.cancel())
           response
@@ -179,22 +196,32 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
           firstAcceptableResponse(trackers.tail)
         }
       }
+      /*List is empty, we have processed all responses and didnt get any good ones*/
       case None => notFound
     }
   }
 
+  /*
+  Make a request to a single proxied repository
+  This is called directly from requests to a prefix mapped to a ProxiedRepository, and also to get the response to
+  service the request to a prefix mapped to a RepositoryGroup
+  Note: request will be mutated to preserve the headers and change the URI.
+  */
   def singleRepoRequest(client: Client, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
     val s3request: DefaultHttpRequest = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, contentUri)
     s3request.setHeader("Host", client.repo.bucket + ".s3.amazonaws.com")
     s3request.setHeader("Date", date)
     s3request.setHeader("Authorization", "AWS " + s3key + ":" + sign(s3Secret, s3request, client.repo.bucket))
+    /*Check S3 cache first*/
     client.s3Service.service(s3request).flatMap {
       s3response => {
         s3response.getStatus.getCode match {
+          /*S3 has the content, return it*/
           case code if (code == 200) => {
             log.info("Serving from S3 bucket %s: %s".format(client.repo.bucket, contentUri))
             Future.value(s3response)
           }
+          /*content not in S3, try to get it from the source repo*/
           case code if (code == 404) => {
             val uri = client.repo.hostPath + contentUri
             request.setUri(uri)
@@ -202,6 +229,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
             client.repoService.service(request).flatMap {
               response => {
                 if (response.getStatus == HttpResponseStatus.OK) {
+                  /*found the content in the source repo, do an async put of the content to S3*/
                   log.info("Serving from Source %s: %s".format(client.repo.host, contentUri))
                   val s3buffer = response.getContent.duplicate()
                   putS3(client, request, contentUri, response.getHeader("Content-Type"), s3buffer)
@@ -222,6 +250,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     }
   }
 
+  /*Asynchronously put content to S3*/
   def putS3(client: Client, request: HttpRequest, contentUri: String, contentType: String, content: ChannelBuffer) {
     val s3Put = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.PUT, contentUri)
     s3Put.setContent(content)
@@ -243,6 +272,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     }
   }
 
+  /*Create the Authorization payload and sign it with the AWS secret*/
   def sign(secret: String, request: HttpRequest, bucket: String): String = {
     val data = List(
       request.getMethod.getName,
@@ -253,6 +283,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     calculateHMAC(secret, data)
   }
 
+  /*Sign the authorization payload*/
   private def calculateHMAC(key: String, data: String): String = {
     val signingKey = new SecretKeySpec(key.getBytes("UTF-8"), ALGORITHM)
     val mac = Mac.getInstance(ALGORITHM)
@@ -261,7 +292,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     new sun.misc.BASE64Encoder().encode(rawHmac)
   }
 
-
+  /*get the prefix from the request URI. e.g. /someprefix/some/other/path returns /someprefix */
   def getPrefix(request: HttpRequest): String = {
     val uri = request.getUri.substring(1)
     val index = uri.indexOf("/")
@@ -272,6 +303,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     }
   }
 
+  /*get the contentUri from the request URI. e.g. /someprefix/some/path/to/artifact returns /some/path/to/artifact */
   def getContentUri(prefix: String, source: String): String = {
     if (source.contains(prefix)) {
       source.substring(source.indexOf(prefix) + prefix.length())
@@ -282,6 +314,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
 }
 
 object ProxyService {
+  /*DateTime format required by AWS*/
   lazy val format = DateTimeFormat.forPattern("EEE, dd MMM yyyy HH:mm:ss z").withLocale(java.util.Locale.US).withZone(DateTimeZone.forOffsetHours(0))
 
   def date: String = format.print(new DateTime)
