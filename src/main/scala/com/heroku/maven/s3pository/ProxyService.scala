@@ -20,6 +20,7 @@ import org.joda.time.format.DateTimeFormat
 
 import org.jboss.netty.buffer.{ChannelBuffers, ChannelBuffer}
 import org.jboss.netty.handler.codec.http._
+import java.lang.IllegalArgumentException
 
 /*
 HTTP Service that acts as a caching proxy server for the configured ProxiedRepository(s) and RepositoryGroup(s).
@@ -363,14 +364,18 @@ object ProxyService {
 }
 
 
-case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String, port: Int = 80, ssl: Boolean = false)
+case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String, port: Int = 80, ssl: Boolean = false) {
+  if(prefix.substring(1).contains("/")) throw new IllegalArgumentException("Prefix %s for Host %s Should not contain the / character, except as its first character".format(prefix,host))
+}
 
 case class HitTracker(client: Client, future: Future[HttpResponse])
 
 case class RepositoryGroup(prefix: String, repos: List[ProxiedRepository]) {
+  if(prefix.substring(1).contains("/")) throw new IllegalArgumentException("Prefix %s for Group Should not contain the / character, except as its first character".format(prefix))
   val hits = new MMap[String, ProxiedRepository]
   val misses = new MMap[String, DateTime]
 }
+
 /*Holds a ProxiedRepository and the associated source and s3 client ServiceFactories*/
 case class Client(repoService: ServiceFactory[HttpRequest, HttpResponse], s3Service: ServiceFactory[HttpRequest, HttpResponse], repo: ProxiedRepository)
 
