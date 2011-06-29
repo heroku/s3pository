@@ -197,13 +197,12 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
             val uri = client.repo.hostPath + contentUri
             request.setUri(uri)
             request.setHeader("Host", client.repo.host)
-            val responseFuture = client.repoService.service(request).onFailure {
+            val responseFuture = client.repoService.service(request)/*.onFailure {
               ex =>
                 if (!ex.isInstanceOf[Future.CancelledException]) {
                   log.log(Level.SEVERE, "request to %s for %s threw %s, returning 404".format(client.repo.host, request.getUri, ex.getClass.getSimpleName), ex)
                 }
-                Future.value(notFound)
-            }
+            }*/
             responseFuture.flatMap {
               response => {
                 if (response.getStatus == HttpResponseStatus.OK) {
