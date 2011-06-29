@@ -1,5 +1,6 @@
 <?xml version='1.0' encoding='UTF-8'?>
-<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0">
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0">
     <modelVersion>4.0.0</modelVersion>
     <groupId>s3pository</groupId>
     <artifactId>s3pository_2.8.1</artifactId>
@@ -92,22 +93,29 @@
                     </dependency>
                 </dependencies>
             </plugin>
-           <plugin>
+            <plugin>
                 <groupId>org.codehaus.mojo</groupId>
-                <artifactId>exec-maven-plugin</artifactId>
-                <version>1.2</version>
+                <artifactId>appassembler-maven-plugin</artifactId>
+                <version>1.1.1</version>
+                <configuration>
+                    <assembleDirectory>target</assembleDirectory>
+                    <generateRepository>false</generateRepository>
+                    <extraJvmArguments>-Xmx512m</extraJvmArguments>
+                    <programs>
+                        <program>
+                            <mainClass>com.heroku.maven.s3pository.S3rver</mainClass>
+                            <name>s3rver</name>
+                        </program>
+                    </programs>
+                </configuration>
                 <executions>
                     <execution>
+                        <phase>package</phase>
                         <goals>
-                            <goal>java</goal>
+                            <goal>assemble</goal>
                         </goals>
                     </execution>
                 </executions>
-                <configuration>
-                    <includeProjectDependencies>true</includeProjectDependencies>
-                    <includePluginDependencies>true</includePluginDependencies>
-                    <mainClass>com.heroku.maven.s3pository.S3rver</mainClass>
-                </configuration>
             </plugin>
         </plugins>
     </build>
