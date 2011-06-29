@@ -197,20 +197,14 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
             val uri = client.repo.hostPath + contentUri
             request.setUri(uri)
             request.setHeader("Host", client.repo.host)
-            val responseFuture = client.repoService.service(request)/*.onFailure {
-              ex =>
-                if (!ex.isInstanceOf[Future.CancelledException]) {
-                  log.log(Level.SEVERE, "request to %s for %s threw %s, returning 404".format(client.repo.host, request.getUri, ex.getClass.getSimpleName), ex)
-                }
-            }*/
-            responseFuture.flatMap {
+            client.repoService.service(request).flatMap {
               response => {
                 if (response.getStatus == HttpResponseStatus.OK) {
                   log.info("Serving from Source %s: %s".format(client.repo.host, contentUri))
                   val s3buffer = response.getContent.duplicate()
                   putS3(client, request, contentUri, response.getHeader("Content-Type"), s3buffer)
                 } else {
-                  log.warning("Request to Source repo %s: path: %s Status Code: %s".format(client.repo.host, request.getUri, response.getStatus.getCode))
+                  log.info("Request to Source repo %s: path: %s Status Code: %s".format(client.repo.host, request.getUri, response.getStatus.getCode))
                 }
                 Future.value(response)
               }
