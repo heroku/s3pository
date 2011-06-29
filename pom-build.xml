@@ -51,7 +51,7 @@
             <configuration>
                 <assembleDirectory>target</assembleDirectory>
                 <generateRepository>false</generateRepository>
-                <extraJvmArguments>-Xmx256m</extraJvmArguments>
+                <extraJvmArguments>-Xmx512m</extraJvmArguments>
                 <programs>
                     <program>
                         <mainClass>com.heroku.maven.s3pository.S3rver</mainClass>
