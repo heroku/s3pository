@@ -136,7 +136,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
           }
           case _ => {
             log.info("returning 404, cached miss for %s".format(contentUri))
-            new Promise[HttpResponse](Return(notFound))
+            Future.value(notFound)
           }
         }
       }
@@ -155,7 +155,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       }
     }
 
-    new Promise[HttpResponse](Return(firstAcceptableResponse(trackers)(group, contentUri)))
+    Future.value(firstAcceptableResponse(trackers)(group, contentUri))
 
   }
 
@@ -191,7 +191,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
         s3response.getStatus.getCode match {
           case code if (code == 200) => {
             log.info("Serving from S3 bucket %s: %s".format(client.repo.bucket, contentUri))
-            new Promise[HttpResponse](Return(s3response))
+            Future.value(s3response)
           }
           case code if (code == 404) => {
             val uri = client.repo.hostPath + contentUri
@@ -202,7 +202,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
                 if (!ex.isInstanceOf[Future.CancelledException]) {
                   log.log(Level.SEVERE, "request to %s for %s threw %s, returning 404".format(client.repo.host, request.getUri, ex.getClass.getSimpleName), ex)
                 }
-                new Promise[HttpResponse](Return(notFound))
+                Future.value(notFound)
             }
             responseFuture.flatMap {
               response => {
@@ -213,7 +213,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
                 } else {
                   log.warning("Request to Source repo %s: path: %s Status Code: %s".format(client.repo.host, request.getUri, response.getStatus.getCode))
                 }
-                new Promise[HttpResponse](Return(response))
+                Future.value(response)
               }
             }
           }
