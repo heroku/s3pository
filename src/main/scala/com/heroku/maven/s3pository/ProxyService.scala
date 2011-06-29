@@ -21,25 +21,24 @@ import org.joda.time.format.DateTimeFormat
 import org.jboss.netty.buffer.{ChannelBuffers, ChannelBuffer}
 import org.jboss.netty.handler.codec.http._
 
-
-case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String, port: Int = 80, ssl: Boolean = false)
-
-case class HitTracker(client: Client, future: Future[HttpResponse])
-
-case class RepositoryGroup(prefix: String, repos: List[ProxiedRepository]) {
-  val hits = new MMap[String, ProxiedRepository]
-  val misses = new MMap[String, DateTime]
-}
-
-case class Client(repoService: ServiceFactory[HttpRequest, HttpResponse], s3Service: ServiceFactory[HttpRequest, HttpResponse], repo: ProxiedRepository)
-
+/*
+HTTP Service that acts as a caching proxy server for the configured ProxiedRepository(s) and RepositoryGroup(s).
+An S3 bucket per ProxiedRepositoriy is used to cache the content retrieved from the source repository.
+Requests to this service are mapped by requestUri prefix to the ProxyRepository or RepositoryGroup that should be used to service the request.
+e.g.
+a ProxyService configured with ProxiedRepository("/prefix", "source.repo.com", "/path/to/repo")
+will respond to a request for
+                  http://0.0.0.0/prefix/some/artifact.ext
+by making requests to
+    http://source.repo.com/path/to/repo/some/artifact.ext
+*/
 class ProxyService(repositories: List[ProxiedRepository], groups: List[RepositoryGroup], s3key: String, s3Secret: String) extends Service[HttpRequest, HttpResponse] {
 
   import ProxyService._
 
   val log = Logger.getLogger(getClass.getName)
   log.info("creating ProxyService")
-
+  /*Timer used to time box parallel request processing*/
   val timer = new JavaTimer(true)
 
   val clients: HashMap[String, Client] = {
@@ -49,7 +48,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       }
     }
   }
-
+  /*create/verify all S3 buckets at creation time*/
   clients.values.foreach(createBucket(_))
   log.info("S3 Buckets verified")
 
@@ -364,6 +363,16 @@ object ProxyService {
 }
 
 
+case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String, port: Int = 80, ssl: Boolean = false)
+
+case class HitTracker(client: Client, future: Future[HttpResponse])
+
+case class RepositoryGroup(prefix: String, repos: List[ProxiedRepository]) {
+  val hits = new MMap[String, ProxiedRepository]
+  val misses = new MMap[String, DateTime]
+}
+/*Holds a ProxiedRepository and the associated source and s3 client ServiceFactories*/
+case class Client(repoService: ServiceFactory[HttpRequest, HttpResponse], s3Service: ServiceFactory[HttpRequest, HttpResponse], repo: ProxiedRepository)
 
 
 
