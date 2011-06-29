@@ -1,8 +1,6 @@
 package com.heroku.maven.s3pository
 
 import com.twitter.finagle.http.Http
-import com.twitter.finagle.Service
-
 import java.net.InetSocketAddress
 import com.twitter.finagle.builder.ClientBuilder
 import com.twitter.conversions.time._
@@ -17,6 +15,7 @@ import org.jboss.netty.handler.codec.http._
 import org.joda.time.{DateTime, DateTimeZone}
 import org.jboss.netty.buffer.{ChannelBuffers, ChannelBuffer}
 import java.util.logging.{Level, Logger}
+import com.twitter.finagle.{ServiceFactory, Service}
 
 case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String)
 
@@ -27,7 +26,7 @@ case class RepositoryGroup(prefix: String, repos: List[ProxiedRepository]) {
   val misses = new MMap[String, DateTime]
 }
 
-case class Client(repoService: Service[HttpRequest, HttpResponse], s3Service: Service[HttpRequest, HttpResponse], repo: ProxiedRepository)
+case class Client(repoService: ServiceFactory[HttpRequest, HttpResponse], s3Service: ServiceFactory[HttpRequest, HttpResponse], repo: ProxiedRepository)
 
 class ProxyService(repositories: List[ProxiedRepository], groups: List[RepositoryGroup], s3key: String, s3Secret: String) extends Service[HttpRequest, HttpResponse] {
 
@@ -55,7 +54,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     }
   }
 
-  def clientService(host: String): Service[HttpRequest, HttpResponse] = {
+  def clientService(host: String): ServiceFactory[HttpRequest, HttpResponse] = {
     import com.twitter.conversions.storage._
     ClientBuilder()
       .codec(Http(_maxRequestSize = 100.megabytes, _maxResponseSize = 100.megabyte))
@@ -65,7 +64,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       .hostConnectionLimit(Integer.MAX_VALUE)
       .hostConnectionMaxIdleTime(5.seconds)
       .logger(Logger.getLogger("finagle.client"))
-      .build()
+      .buildFactory()
   }
 
   def createBucket(client: Client) {
@@ -75,7 +74,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     s3request.setHeader("Date", date)
     s3request.setHeader("Content-Length", "0")
     s3request.setHeader("Authorization", "AWS " + s3key + ":" + sign(s3Secret, s3request, client.repo.bucket))
-    client.s3Service(s3request) onSuccess {
+    client.s3Service.service(s3request) onSuccess {
       response =>
         if (response.getStatus.getCode != 200) {
           log.info("Create Bucket %s return code %d".format(client.repo.bucket, response.getStatus.getCode))
@@ -187,7 +186,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     s3request.setHeader("Host", client.repo.bucket + ".s3.amazonaws.com")
     s3request.setHeader("Date", date)
     s3request.setHeader("Authorization", "AWS " + s3key + ":" + sign(s3Secret, s3request, client.repo.bucket))
-    client.s3Service(s3request).flatMap {
+    client.s3Service.service(s3request).flatMap {
       s3response => {
         s3response.getStatus.getCode match {
           case code if (code == 200) => {
@@ -198,7 +197,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
             val uri = client.repo.hostPath + contentUri
             request.setUri(uri)
             request.setHeader("Host", client.repo.host)
-            val responseFuture = client.repoService(request).onFailure {
+            val responseFuture = client.repoService.service(request).onFailure {
               ex =>
                 if (!ex.isInstanceOf[Future.CancelledException]) {
                   log.log(Level.SEVERE, "request to %s for %s threw %s, returning 404".format(client.repo.host, request.getUri, ex.getClass.getSimpleName), ex)
@@ -238,7 +237,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     s3Put.setHeader("Host", client.repo.bucket + ".s3.amazonaws.com")
     s3Put.setHeader("Date", date)
     s3Put.setHeader("Authorization", "AWS " + s3key + ":" + sign(s3Secret, s3Put, client.repo.bucket))
-    client.s3Service {
+    client.s3Service.service {
       s3Put
     } onSuccess {
       resp => log.info("S3Put Success: Code %s, Content %s ".format(resp.getStatus.getReasonPhrase, resp.getContent.toString("UTF-8")))
