@@ -5,7 +5,6 @@ import java.net.InetSocketAddress
 import com.twitter.finagle.builder.ServerBuilder
 import com.twitter.conversions.storage._
 import util.Properties
-import collection.mutable.{HashMap => MMap}
 import java.util.logging.{LogManager, Logger}
 
 object S3rver {
@@ -17,14 +16,13 @@ object S3rver {
     val springReleases = ProxiedRepository("/spring-releases", "maven.springframework.org", "/release", "sclasen-proxy-spring-releases")
     val springMilestones = ProxiedRepository("/spring-milestones", "maven.springframework.org", "/milestone", "sclasen-proxy-spring-milestones")
     val springRoo = ProxiedRepository("/spring-milestones", "spring-roo-repository.springsource.org", "/release", "sclasen-proxy-spring-roo")
-    //todo ssl
-    //val jboss = ProxiedRepository("/spring-milestones", "repository.jboss.org", "/nexus/content/repositories/releases", "sclasen-proxy-jboss")
+    val jboss = ProxiedRepository("/jboss", "repository.jboss.org", "/nexus/content/repositories/releases", "sclasen-proxy-jboss", 443, true)
     val forceReleases = ProxiedRepository("/force-releases", "repo.t.salesforce.com", "/archiva/repository/releases", "sclasen-proxy-force-releases")
     val forceSnapshots = ProxiedRepository("/force-milestones", "repo.t.salesforce.com", "/archiva/repository/snapshots", "sclasen-proxy-force-snapshots")
     val datanucleus = ProxiedRepository("/datanucleus", "www.datanucleus.org", "downloads/maven2", "sclasen-proxy-datanucleus")
     val typesafe = ProxiedRepository("/typesafe-releases", "repo.typesafe.com", "/typesafe/maven-releases", "sclasen-proxy-typesafe-releases")
     val typesafeSnapshots = ProxiedRepository("/typesafe-snapshots", "repo.typesafe.com", "/typesafe/maven-snapshots", "sclasen-proxy-typesafe-snapshots")
-    val proxies = List(central, springReleases,springMilestones,springRoo,forceReleases,forceSnapshots,datanucleus,typesafe,typesafeSnapshots)
+    val proxies = List(central, springReleases,springMilestones,springRoo,jboss,forceReleases,forceSnapshots,datanucleus,typesafe,typesafeSnapshots)
     val all = RepositoryGroup("/all", proxies)
     val address = new InetSocketAddress(Properties.envOrElse("PORT", "8080").toInt)
     val s3key: String = Properties.envOrNone("S3_KEY").getOrElse {

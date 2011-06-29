@@ -17,7 +17,7 @@ import org.jboss.netty.buffer.{ChannelBuffers, ChannelBuffer}
 import java.util.logging.{Level, Logger}
 import com.twitter.finagle.{ServiceFactory, Service}
 
-case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String)
+case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String, port:Int = 80, ssl:Boolean=false)
 
 case class HitTracker(client: Client, future: Future[HttpResponse])
 
@@ -40,7 +40,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   val clients: HashMap[String, Client] = {
     repositories.foldLeft(new HashMap[String, Client]) {
       (m, repo) => {
-        m + (repo.prefix -> Client(clientService(repo.host), clientService(repo.bucket + ".s3.amazonaws.com"), repo))
+        m + (repo.prefix -> Client(clientService(repo.host, repo.port, repo.ssl), clientService(repo.bucket + ".s3.amazonaws.com", 80, false), repo))
       }
     }
   }
@@ -54,17 +54,19 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     }
   }
 
-  def clientService(host: String): ServiceFactory[HttpRequest, HttpResponse] = {
+  def clientService(host: String, port:Int, ssl:Boolean): ServiceFactory[HttpRequest, HttpResponse] = {
     import com.twitter.conversions.storage._
-    ClientBuilder()
+    var builder = ClientBuilder()
       .codec(Http(_maxRequestSize = 100.megabytes, _maxResponseSize = 100.megabyte))
       .sendBufferSize(1048576)
       .recvBufferSize(1048576)
-      .hosts(new InetSocketAddress(host, 80))
+      .hosts(new InetSocketAddress(host, port))
       .hostConnectionLimit(Integer.MAX_VALUE)
       .hostConnectionMaxIdleTime(5.seconds)
+      .name(host)
       .logger(Logger.getLogger("finagle.client"))
-      .buildFactory()
+    if(ssl)(builder = builder.tlsWithoutValidation())
+    builder.buildFactory()
   }
 
   def createBucket(client: Client) {
