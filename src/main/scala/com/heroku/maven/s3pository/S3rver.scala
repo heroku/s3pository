@@ -17,7 +17,7 @@ object S3rver {
     log.info("Starting S3rver")
     /*Wire up the proxied repositories*/
     val proxies = List(/*proxy prefix          source repo host                          source repo path to m2 repo             S3 bucket to store cached content */
-      ProxiedRepository("/central",            "repo1.maven.org",                        "/maven2",                              "sclasen-proxy-central"),
+      ProxiedRepository("/central",            "repo1.maven.org",                        "/maven2",                              "sclasen-proxy-central2"),
       ProxiedRepository("/spring-releases",    "maven.springframework.org",              "/release",                             "sclasen-proxy-spring-releases"),
       ProxiedRepository("/spring-milestones",  "maven.springframework.org",              "/milestone",                           "sclasen-proxy-spring-milestones"),
       ProxiedRepository("/spring-milestones",  "spring-roo-repository.springsource.org", "/release",                             "sclasen-proxy-spring-roo"),
