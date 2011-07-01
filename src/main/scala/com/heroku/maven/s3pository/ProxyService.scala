@@ -10,10 +10,11 @@ import collection.immutable.HashMap
 import collection.mutable.{HashMap => MMap}
 import collection.JavaConversions._
 
-import java.util.logging.{Level, Logger}
 import java.net.InetSocketAddress
 import javax.crypto.spec.SecretKeySpec
 import javax.crypto.Mac
+import com.twitter.logging.Logger
+import java.util.logging.{Logger=>JLog}
 
 import org.joda.time.{DateTime, DateTimeZone}
 import org.joda.time.format.DateTimeFormat
@@ -37,7 +38,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
 
   import ProxyService._
 
-  val log = Logger.getLogger(getClass.getName)
+  val log = Logger.get(getClass)
   log.info("creating ProxyService")
   /*Timer used to time box parallel request processing*/
   val timer = new JavaTimer(true)
@@ -69,14 +70,13 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       .hostConnectionLimit(Integer.MAX_VALUE)
       .hostConnectionMaxIdleTime(5.seconds)
       .name(host)
-      .logger(Logger.getLogger("finagle.client"))
     if (ssl) (builder = builder.tlsWithoutValidation())
     builder.buildFactory()
   }
 
   /*Create any missing S3 buckets. Create bucket is idempotent, and returns a 200 if the bucket exists or is created*/
   def createBucket(client: Client) {
-    log.fine("creating bucket: %s".format(client.repo.bucket))
+    log.debug("creating bucket: %s".format(client.repo.bucket))
     val s3request = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.PUT, "/")
     s3request.setHeader("Host", client.repo.bucket + ".s3.amazonaws.com")
     s3request.setHeader("Date", date)
@@ -85,40 +85,40 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     client.s3Service.service(s3request) onSuccess {
       response =>
         if (response.getStatus.getCode != 200) {
-          log.info("Create Bucket %s return code %d".format(client.repo.bucket, response.getStatus.getCode))
+          log.info("Create Bucket %s return code %d",client.repo.bucket, response.getStatus.getCode)
           log.info(response.getContent.toString("UTF-8"))
         } else {
-          log.info("Create Bucket %s return code %d".format(client.repo.bucket, response.getStatus.getCode))
+          log.info("Create Bucket %s return code %d", client.repo.bucket, response.getStatus.getCode)
         }
     } onFailure {
       ex =>
-        log.log(Level.SEVERE, "failure while creating bucket:%s".format(client.repo.bucket), ex)
+        log.error(ex, "failure while creating bucket:%s", client.repo.bucket)
     } onCancellation {
-      log.warning("create bucket: %s was cancelled".format(client.repo.bucket))
+      log.warning("create bucket: %s was cancelled", client.repo.bucket)
     }
   }
 
   /*main service function for ProxyService, this handles all incoming requests*/
   def apply(request: HttpRequest) = {
-    log.info("Request for: %s".format(request.getUri))
+    log.info("Request for: %s", request.getUri)
     val prefix = getPrefix(request)
     val contentUri = getContentUri(prefix, request.getUri)
     repositoryGroups.get(prefix) match {
       /*request matches a group*/
       case Some(group) => {
-        log.info("Group request: %s".format(group.prefix))
+        log.info("Group request: %s",group.prefix)
         groupRepoRequest(group, contentUri, request)
       }
       case None => {
         clients.get(prefix) match {
           /*request matches a single proxied repo*/
           case Some(client) => {
-            log.info("Single repo request: %s".format(prefix))
+            log.info("Single repo request: %s",prefix)
             singleRepoRequest(client, contentUri, request)
           }
           /*no match*/
           case None => {
-            log.info("Unknown prefix: %s".format(prefix))
+            log.info("Unknown prefix: %s",prefix)
             Future.value(notFound)
           }
         }
@@ -130,7 +130,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     group.hits.get(contentUri) match {
       /*group has a hit for the contentUri so go directly to the right proxy*/
       case Some(proxiedRepo) => {
-        log.info("%s cache hit on %s".format(contentUri, proxiedRepo.host))
+        log.info("%s cache hit on %s",contentUri, proxiedRepo.host)
         singleRepoRequest(clients.get(proxiedRepo.prefix).get, contentUri, request)
       }
       /*group dosent have a hit, try and find the contentUri in one of the groups proxies*/
@@ -140,13 +140,13 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
           case None => groupParallelRequest(group, contentUri, request)
           /*cached missed is timed out, remove the cache entry and do a parallel request to the group proxies*/
           case Some(time) if (time.plusMinutes(30).isBeforeNow) => {
-            log.info("invalidating cached miss for %s".format(contentUri))
+            log.info("invalidating cached miss for %s", contentUri)
             group.misses.remove(contentUri)
             groupParallelRequest(group, contentUri, request)
           }
           /*we have a valid cached miss, so return 404*/
           case _ => {
-            log.info("returning 404, cached miss for %s".format(contentUri))
+            log.info("returning 404, cached miss for %s",contentUri)
             Future.value(notFound)
           }
         }
@@ -159,7 +159,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     val trackers = group.repos.map {
       repo => {
         val client = clients.get(repo.prefix).get
-        log.info("parallel request for %s to %s".format(contentUri, repo.host))
+        log.info("parallel request for %s to %s",contentUri, repo.host)
         /*clone the request and send to the proxied repo that will timeout and return a 504 after 10 seconds*/
         val future = singleRepoRequest(client, contentUri, cloneRequest(request)).within(timer, 10.seconds) handle {
           case _: TimeoutException => timeout
@@ -218,7 +218,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
         s3response.getStatus.getCode match {
           /*S3 has the content, return it*/
           case code if (code == 200) => {
-            log.info("Serving from S3 bucket %s: %s".format(client.repo.bucket, contentUri))
+            log.info("Serving from S3 bucket %s: %s",client.repo.bucket, contentUri)
             Future.value(s3response)
           }
           /*content not in S3, try to get it from the source repo*/
@@ -230,19 +230,19 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
               response => {
                 if (response.getStatus == HttpResponseStatus.OK) {
                   /*found the content in the source repo, do an async put of the content to S3*/
-                  log.info("Serving from Source %s: %s".format(client.repo.host, contentUri))
+                  log.info("Serving from Source %s: %s", client.repo.host, contentUri)
                   val s3buffer = response.getContent.duplicate()
                   putS3(client, request, contentUri, response.getHeader("Content-Type"), s3buffer)
                 } else {
-                  log.info("Request to Source repo %s: path: %s Status Code: %s".format(client.repo.host, request.getUri, response.getStatus.getCode))
+                  log.info("Request to Source repo %s: path: %s Status Code: %s",client.repo.host, request.getUri, response.getStatus.getCode)
                 }
                 Future.value(response)
               }
             }
           }
           case code@_ => {
-            log.severe("Recieved code:" + code)
-            log.severe(s3response.getContent.toString("UTF-8"))
+            log.error("Recieved code: %s", code)
+            log.error(s3response.getContent.toString("UTF-8"))
             Future.value(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.INTERNAL_SERVER_ERROR))
           }
         }
@@ -264,11 +264,11 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     client.s3Service.service {
       s3Put
     } onSuccess {
-      resp => log.info("S3Put Success: Code %s, Content %s ".format(resp.getStatus.getReasonPhrase, resp.getContent.toString("UTF-8")))
+      resp => log.info("S3Put Success: Code %s, Content %s ",resp.getStatus.getReasonPhrase, resp.getContent.toString("UTF-8"))
     } onFailure {
-      ex => log.log(Level.SEVERE, "Exception in S3 Put: ", ex)
+      ex => log.error(ex, "Exception in S3 Put: ")
     } onCancellation {
-      log.severe("S3Put cancelled" + s3Put.toString)
+      log.error("S3Put cancelled %s", s3Put.toString)
     }
   }
 

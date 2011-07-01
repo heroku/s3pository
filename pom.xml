@@ -19,6 +19,12 @@
             <version>1.6.2</version>
             <scope>compile</scope>
         </dependency>
+         <dependency>
+            <groupId>com.twitter</groupId>
+            <artifactId>util-logging</artifactId>
+            <version>1.9.0</version>
+            <scope>compile</scope>
+        </dependency>
         <dependency>
             <groupId>org.scalatest</groupId>
             <artifactId>scalatest_2.8.1</artifactId>

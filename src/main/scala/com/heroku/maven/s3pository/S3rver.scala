@@ -1,20 +1,29 @@
 package com.heroku.maven.s3pository
 
+import com.twitter.logging.Logger
+import com.twitter.logging.config.{ConsoleHandlerConfig, LoggerConfig}
 import com.twitter.conversions.storage._
 import com.twitter.finagle.http.Http
 import com.twitter.finagle.builder.ServerBuilder
 
 import java.net.InetSocketAddress
-import java.util.logging.{LogManager, Logger}
+import java.util.logging.{Logger=>JLog}
+
 
 import util.Properties
 
 
 object S3rver {
   def main(args: Array[String]) {
-    LogManager.getLogManager.readConfiguration(getClass.getClassLoader.getResourceAsStream("logging.properties"))
-    val log = Logger.getLogger("S3Server-Main")
-    log.info("Starting S3rver")
+    Logger.clearHandlers()
+    val logConf = new LoggerConfig{
+      node = ""
+      level = Logger.levelNames.get(Properties.envOrElse("LOG_LEVEL", "INFO"))
+      handlers = new ConsoleHandlerConfig
+    }
+    logConf.apply()
+    val log = Logger.get("S3Server-Main")
+    log.warning("Starting S3rver")
     /*Wire up the proxied repositories*/
     val proxies = List(/*proxy prefix          source repo host                          source repo path to m2 repo             S3 bucket to store cached content */
       ProxiedRepository("/central",            "repo1.maven.org",                        "/maven2",                              "sclasen-proxy-central2"),
@@ -33,13 +42,13 @@ object S3rver {
 
     /*Grab AWS keys */
     val s3key: String = Properties.envOrNone("S3_KEY").getOrElse {
-      log.severe("S3_KEY env var not defined, exiting")
+      log.fatal("S3_KEY env var not defined, exiting")
       System.exit(666)
       "noKey"
     }
 
     val s3secret: String = Properties.envOrNone("S3_SECRET").getOrElse {
-      log.severe("S3_SECRET env var not defined, exiting")
+      log.fatal("S3_SECRET env var not defined, exiting")
       System.exit(666)
       "noSecret"
     }
@@ -56,10 +65,9 @@ object S3rver {
       .sendBufferSize(1048576)
       .recvBufferSize(1048576)
       .name("s3pository")
-      .logger(Logger.getLogger("finagle.server"))
       .build(service)
 
-    log.info("S3rver started")
+    log.warning("S3rver started")
   }
 }
 
