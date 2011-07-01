@@ -22,7 +22,7 @@ object S3rver {
     }
     logConf.apply()
     val supressNettyWarning = new LoggerConfig{
-      node = "com.twitter.finagle.builder"
+      node = "channel"
       level = Logger.ERROR
     }
     supressNettyWarning.apply()
