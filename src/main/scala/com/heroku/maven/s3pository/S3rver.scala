@@ -22,7 +22,7 @@ object S3rver {
     }
     logConf.apply()
     val supressNettyWarning = new LoggerConfig{
-      node = "channel"
+      node = "org.jboss.netty.channel.SimpleChannelHandler"
       level = Logger.ERROR
     }
     supressNettyWarning.apply()
