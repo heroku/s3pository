@@ -14,7 +14,6 @@ import java.net.InetSocketAddress
 import javax.crypto.spec.SecretKeySpec
 import javax.crypto.Mac
 import com.twitter.logging.Logger
-import java.util.logging.{Logger=>JLog}
 
 import org.joda.time.{DateTime, DateTimeZone}
 import org.joda.time.format.DateTimeFormat

@@ -7,7 +7,6 @@ import com.twitter.finagle.http.Http
 import com.twitter.finagle.builder.ServerBuilder
 
 import java.net.InetSocketAddress
-import java.util.logging.{Logger=>JLog}
 
 
 import util.Properties
