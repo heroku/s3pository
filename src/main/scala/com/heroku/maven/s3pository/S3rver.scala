@@ -21,6 +21,11 @@ object S3rver {
       handlers = new ConsoleHandlerConfig
     }
     logConf.apply()
+    val supressNettyWarning = new LoggerConfig{
+      node = "com.twitter.finagle.builder"
+      level = Logger.ERROR
+    }
+    supressNettyWarning.apply()
     val log = Logger.get("S3Server-Main")
     log.warning("Starting S3rver")
     /*Wire up the proxied repositories*/
