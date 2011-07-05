@@ -211,7 +211,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     val s3request: DefaultHttpRequest = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, contentUri)
     s3request.setHeader(HOST, client.repo.bucket + ".s3.amazonaws.com")
     s3request.setHeader(DATE, date)
-    s3request.setHeader(AUTHORIZATION, authorization(s3key, s3Secret, request, client.repo.bucket))
+    s3request.setHeader(AUTHORIZATION, authorization(s3key, s3Secret, s3request, client.repo.bucket))
     /*Check S3 cache first*/
     client.s3Service.service(s3request).flatMap {
       s3response => {
