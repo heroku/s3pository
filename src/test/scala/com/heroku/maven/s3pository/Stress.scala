@@ -16,7 +16,7 @@ import util.{Random, Properties}
 /**
  * Set S3_KEY and S3_SECRET as env vars
  * args are
- * group or proxy to hit (http://somehost:80/somepath)
+ * group or proxy to hit (http://somehost:80/somepath/ ) needs a trailing slash please
  * concurrency
  * totalRequests to make
  * S3 bucket to get a list of keys to concatenate to /somepath to get a good path to hit
