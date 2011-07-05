@@ -74,6 +74,7 @@ object Stress {
 
       statsReceiver.print()
     }
+    println("Done Main")
   }
 
 }
