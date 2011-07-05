@@ -20,6 +20,7 @@ import org.joda.time.format.DateTimeFormat
 
 import org.jboss.netty.buffer.{ChannelBuffers, ChannelBuffer}
 import org.jboss.netty.handler.codec.http._
+import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
 import java.lang.IllegalArgumentException
 
 /*
@@ -77,10 +78,10 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   def createBucket(client: Client) {
     log.debug("creating bucket: %s".format(client.repo.bucket))
     val s3request = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.PUT, "/")
-    s3request.setHeader("Host", client.repo.bucket + ".s3.amazonaws.com")
-    s3request.setHeader("Date", date)
-    s3request.setHeader("Content-Length", "0")
-    s3request.setHeader("Authorization", "AWS " + s3key + ":" + sign(s3Secret, s3request, client.repo.bucket))
+    s3request.setHeader(HOST, client.repo.bucket + ".s3.amazonaws.com")
+    s3request.setHeader(DATE, date)
+    s3request.setHeader(CONTENT_LENGTH, "0")
+    s3request.setHeader(AUTHORIZATION, "AWS " + s3key + ":" + sign(s3Secret, s3request, client.repo.bucket))
     client.s3Service.service(s3request) onSuccess {
       response =>
         if (response.getStatus.getCode != 200) {
@@ -208,9 +209,9 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   */
   def singleRepoRequest(client: Client, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
     val s3request: DefaultHttpRequest = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, contentUri)
-    s3request.setHeader("Host", client.repo.bucket + ".s3.amazonaws.com")
-    s3request.setHeader("Date", date)
-    s3request.setHeader("Authorization", "AWS " + s3key + ":" + sign(s3Secret, s3request, client.repo.bucket))
+    s3request.setHeader(HOST, client.repo.bucket + ".s3.amazonaws.com")
+    s3request.setHeader(DATE, date)
+    s3request.setHeader(AUTHORIZATION, "AWS " + s3key + ":" + sign(s3Secret, s3request, client.repo.bucket))
     /*Check S3 cache first*/
     client.s3Service.service(s3request).flatMap {
       s3response => {
@@ -255,11 +256,11 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     s3Put.setContent(content)
     //seems slow and barfs in the log but eventually succeeds. Revisit.
     //s3Put.setHeader("Expect","100-continue")
-    s3Put.setHeader("Content-Length", content.readableBytes)
-    s3Put.setHeader("Content-Type", contentType)
-    s3Put.setHeader("Host", client.repo.bucket + ".s3.amazonaws.com")
-    s3Put.setHeader("Date", date)
-    s3Put.setHeader("Authorization", "AWS " + s3key + ":" + sign(s3Secret, s3Put, client.repo.bucket))
+    s3Put.setHeader(CONTENT_LENGTH, content.readableBytes)
+    s3Put.setHeader(CONTENT_TYPE, contentType)
+    s3Put.setHeader(HOST, client.repo.bucket + ".s3.amazonaws.com")
+    s3Put.setHeader(DATE, date)
+    s3Put.setHeader(AUTHORIZATION, "AWS " + s3key + ":" + sign(s3Secret, s3Put, client.repo.bucket))
     client.s3Service.service {
       s3Put
     } onSuccess {
@@ -275,9 +276,9 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   def sign(secret: String, request: HttpRequest, bucket: String): String = {
     val data = List(
       request.getMethod.getName,
-      Option(request.getHeader("Content-MD5")).getOrElse(""),
-      Option(request.getHeader("Content-Type")).getOrElse(""),
-      request.getHeader("Date")
+      Option(request.getHeader(CONTENT_MD5)).getOrElse(""),
+      Option(request.getHeader(CONTENT_TYPE)).getOrElse(""),
+      request.getHeader(DATE)
     ).foldLeft("")(_ + _ + "\n") + "/" + bucket + request.getUri
     calculateHMAC(secret, data)
   }
