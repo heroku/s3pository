@@ -10,7 +10,7 @@ import com.twitter.logging.config.HandlerConfig
 class NewRelicLogHandler(formatter: Formatter, level: Option[Level]) extends Handler(formatter, level) {
   def this() = this (BasicFormatter, None)
 
-  def publish(record: javalog.LogRecord) = {
+  def publish(record: javalog.LogRecord) {
     Option(record.getThrown) match {
       case Some(exception) => {
         val map = Map(
