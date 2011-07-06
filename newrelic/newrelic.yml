@@ -176,7 +176,8 @@ common: &default_settings
   # Certain types of instrumentation such as GC stats will not work if 
   # you are running multi-threaded.  Please let us know.
   # multi_threaded = false
-
+  thread_profiler:
+    enabled: true
 # Application Environments
 # ------------------------------------------
 # Environment-specific settings are in this section.
