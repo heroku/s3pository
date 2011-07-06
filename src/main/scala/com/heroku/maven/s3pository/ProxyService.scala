@@ -22,6 +22,7 @@ import org.jboss.netty.buffer.{ChannelBuffers, ChannelBuffer}
 import org.jboss.netty.handler.codec.http._
 import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
 import java.lang.IllegalArgumentException
+import com.newrelic.api.agent.Trace
 
 /*
 HTTP Service that acts as a caching proxy server for the configured ProxiedRepository(s) and RepositoryGroup(s).
@@ -69,7 +70,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       .hosts(new InetSocketAddress(host, port))
       .hostConnectionLimit(Integer.MAX_VALUE)
       .hostConnectionMaxIdleTime(5.seconds)
-      .reportTo(NewRelicStatsReceiver)
+      //.reportTo(NewRelicStatsReceiver)
       .name(host)
     if (ssl) (builder = builder.tlsWithoutValidation())
     builder.buildFactory()
@@ -100,6 +101,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   }
 
   /*main service function for ProxyService, this handles all incoming requests*/
+  @Trace
   def apply(request: HttpRequest) = {
     log.info("Request for: %s", request.getUri)
     val prefix = getPrefix(request)
@@ -127,6 +129,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     }
   }
 
+  @Trace
   def groupRepoRequest(group: RepositoryGroup, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
     group.hits.get(contentUri) match {
       /*group has a hit for the contentUri so go directly to the right proxy*/
@@ -156,6 +159,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   }
 
   /*do a parallel request to the group proxies, and return the first acceptale request */
+  @Trace
   def groupParallelRequest(group: RepositoryGroup, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
     val trackers = group.repos.map {
       repo => {
@@ -208,6 +212,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   service the request to a prefix mapped to a RepositoryGroup
   Note: request will be mutated to preserve the headers and change the URI.
   */
+  @Trace
   def singleRepoRequest(client: Client, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
     val s3request: DefaultHttpRequest = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, contentUri)
     s3request.setHeader(HOST, client.repo.bucket + ".s3.amazonaws.com")
