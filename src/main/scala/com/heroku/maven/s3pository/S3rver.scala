@@ -1,7 +1,5 @@
 package com.heroku.maven.s3pository
 
-import com.twitter.logging.Logger
-import com.twitter.logging.config.{ConsoleHandlerConfig, LoggerConfig}
 import com.twitter.conversions.storage._
 import com.twitter.finagle.http.Http
 import com.twitter.finagle.builder.ServerBuilder
@@ -10,6 +8,9 @@ import java.net.InetSocketAddress
 
 
 import util.Properties
+import com.twitter.logging.{BasicFormatter, Logger}
+import com.twitter.logging.Level.WARNING
+import com.twitter.logging.config.{BasicFormatterConfig, ConsoleHandlerConfig, LoggerConfig}
 
 
 object S3rver {
@@ -18,7 +19,7 @@ object S3rver {
     val logConf = new LoggerConfig{
       node = ""
       level = Logger.levelNames.get(Properties.envOrElse("LOG_LEVEL", "INFO"))
-      handlers = new ConsoleHandlerConfig
+      handlers = List(new ConsoleHandlerConfig, new NewRelicLogHandlerConfig)
     }
     logConf.apply()
     val supressNettyWarning = new LoggerConfig{
@@ -68,6 +69,7 @@ object S3rver {
       .bindTo(address)
       .sendBufferSize(1048576)
       .recvBufferSize(1048576)
+      .reportTo(NewRelicStatsReceiver)
       .name("s3pository")
       .build(service)
 
