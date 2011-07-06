@@ -85,7 +85,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     client.s3Service.service(s3request) onSuccess {
       response =>
         if (response.getStatus.getCode != 200) {
-          log.info("Create Bucket %s return code %d",client.repo.bucket, response.getStatus.getCode)
+          log.info("Create Bucket %s return code %d", client.repo.bucket, response.getStatus.getCode)
           log.info(response.getContent.toString("UTF-8"))
         } else {
           log.info("Create Bucket %s return code %d", client.repo.bucket, response.getStatus.getCode)
@@ -106,19 +106,19 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     repositoryGroups.get(prefix) match {
       /*request matches a group*/
       case Some(group) => {
-        log.info("Group request: %s",group.prefix)
+        log.info("Group request: %s", group.prefix)
         groupRepoRequest(group, contentUri, request)
       }
       case None => {
         clients.get(prefix) match {
           /*request matches a single proxied repo*/
           case Some(client) => {
-            log.info("Single repo request: %s",prefix)
+            log.info("Single repo request: %s", prefix)
             singleRepoRequest(client, contentUri, request)
           }
           /*no match*/
           case None => {
-            log.info("Unknown prefix: %s",prefix)
+            log.info("Unknown prefix: %s", prefix)
             Future.value(notFound)
           }
         }
@@ -130,7 +130,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     group.hits.get(contentUri) match {
       /*group has a hit for the contentUri so go directly to the right proxy*/
       case Some(proxiedRepo) => {
-        log.info("%s cache hit on %s",contentUri, proxiedRepo.host)
+        log.info("%s cache hit on %s", contentUri, proxiedRepo.host)
         singleRepoRequest(clients.get(proxiedRepo.prefix).get, contentUri, request)
       }
       /*group dosent have a hit, try and find the contentUri in one of the groups proxies*/
@@ -146,7 +146,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
           }
           /*we have a valid cached miss, so return 404*/
           case _ => {
-            log.info("returning 404, cached miss for %s",contentUri)
+            log.info("returning 404, cached miss for %s", contentUri)
             Future.value(notFound)
           }
         }
@@ -159,7 +159,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     val trackers = group.repos.map {
       repo => {
         val client = clients.get(repo.prefix).get
-        log.info("parallel request for %s to %s",contentUri, repo.host)
+        log.info("parallel request for %s to %s", contentUri, repo.host)
         /*clone the request and send to the proxied repo that will timeout and return a 504 after 10 seconds*/
         val future = singleRepoRequest(client, contentUri, cloneRequest(request)).within(timer, 10.seconds) handle {
           case _: TimeoutException => timeout
@@ -211,14 +211,14 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     val s3request: DefaultHttpRequest = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, contentUri)
     s3request.setHeader(HOST, client.repo.bucket + ".s3.amazonaws.com")
     s3request.setHeader(DATE, date)
-    s3request.setHeader(AUTHORIZATION, "AWS " + s3key + ":" + sign(s3Secret, s3request, client.repo.bucket))
+    s3request.setHeader(AUTHORIZATION, authorization(s3key, s3Secret, s3request, client.repo.bucket))
     /*Check S3 cache first*/
     client.s3Service.service(s3request).flatMap {
       s3response => {
         s3response.getStatus.getCode match {
           /*S3 has the content, return it*/
           case code if (code == 200) => {
-            log.info("Serving from S3 bucket %s: %s",client.repo.bucket, contentUri)
+            log.info("Serving from S3 bucket %s: %s", client.repo.bucket, contentUri)
             Future.value(s3response)
           }
           /*content not in S3, try to get it from the source repo*/
@@ -234,7 +234,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
                   val s3buffer = response.getContent.duplicate()
                   putS3(client, request, contentUri, response.getHeader("Content-Type"), s3buffer)
                 } else {
-                  log.info("Request to Source repo %s: path: %s Status Code: %s",client.repo.host, request.getUri, response.getStatus.getCode)
+                  log.info("Request to Source repo %s: path: %s Status Code: %s", client.repo.host, request.getUri, response.getStatus.getCode)
                 }
                 Future.value(response)
               }
@@ -260,11 +260,11 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     s3Put.setHeader(CONTENT_TYPE, contentType)
     s3Put.setHeader(HOST, client.repo.bucket + ".s3.amazonaws.com")
     s3Put.setHeader(DATE, date)
-    s3Put.setHeader(AUTHORIZATION, "AWS " + s3key + ":" + sign(s3Secret, s3Put, client.repo.bucket))
+    s3Put.setHeader(AUTHORIZATION, authorization(s3key, s3Secret, s3Put, client.repo.bucket))
     client.s3Service.service {
       s3Put
     } onSuccess {
-      resp => log.info("S3Put Success: Code %s, Content %s ",resp.getStatus.getReasonPhrase, resp.getContent.toString("UTF-8"))
+      resp => log.info("S3Put Success: Code %s, Content %s ", resp.getStatus.getReasonPhrase, resp.getContent.toString("UTF-8"))
     } onFailure {
       ex => log.error(ex, "Exception in S3 Put: ")
     } onCancellation {
@@ -272,25 +272,6 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     }
   }
 
-  /*Create the Authorization payload and sign it with the AWS secret*/
-  def sign(secret: String, request: HttpRequest, bucket: String): String = {
-    val data = List(
-      request.getMethod.getName,
-      Option(request.getHeader(CONTENT_MD5)).getOrElse(""),
-      Option(request.getHeader(CONTENT_TYPE)).getOrElse(""),
-      request.getHeader(DATE)
-    ).foldLeft("")(_ + _ + "\n") + "/" + bucket + request.getUri
-    calculateHMAC(secret, data)
-  }
-
-  /*Sign the authorization payload*/
-  private def calculateHMAC(key: String, data: String): String = {
-    val signingKey = new SecretKeySpec(key.getBytes("UTF-8"), ALGORITHM)
-    val mac = Mac.getInstance(ALGORITHM)
-    mac.init(signingKey)
-    val rawHmac = mac.doFinal(data.getBytes())
-    new sun.misc.BASE64Encoder().encode(rawHmac)
-  }
 
   /*get the prefix from the request URI. e.g. /someprefix/some/other/path returns /someprefix */
   def getPrefix(request: HttpRequest): String = {
@@ -320,6 +301,29 @@ object ProxyService {
   def date: String = format.print(new DateTime)
 
   val ALGORITHM = "HmacSHA1"
+  /*Create the Authorization payload and sign it with the AWS secret*/
+  def sign(secret: String, request: HttpRequest, bucket: String): String = {
+    val data = List(
+      request.getMethod.getName,
+      Option(request.getHeader(CONTENT_MD5)).getOrElse(""),
+      Option(request.getHeader(CONTENT_TYPE)).getOrElse(""),
+      request.getHeader(DATE)
+    ).foldLeft("")(_ + _ + "\n") + "/" + bucket + request.getUri
+    calculateHMAC(secret, data)
+  }
+
+  def authorization(s3key: String, s3Secret: String, req: HttpRequest, bucket: String): String = {
+    "AWS " + s3key + ":" + sign(s3Secret, req, bucket)
+  }
+
+  /*Sign the authorization payload*/
+  private def calculateHMAC(key: String, data: String): String = {
+    val signingKey = new SecretKeySpec(key.getBytes("UTF-8"), ALGORITHM)
+    val mac = Mac.getInstance(ALGORITHM)
+    mac.init(signingKey)
+    val rawHmac = mac.doFinal(data.getBytes())
+    new sun.misc.BASE64Encoder().encode(rawHmac)
+  }
 
   def notFound = {
     val resp = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.NOT_FOUND)
@@ -365,13 +369,13 @@ object ProxyService {
 
 
 case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String, port: Int = 80, ssl: Boolean = false) {
-  if(prefix.substring(1).contains("/")) throw new IllegalArgumentException("Prefix %s for Host %s Should not contain the / character, except as its first character".format(prefix,host))
+  if (prefix.substring(1).contains("/")) throw new IllegalArgumentException("Prefix %s for Host %s Should not contain the / character, except as its first character".format(prefix, host))
 }
 
 case class HitTracker(client: Client, future: Future[HttpResponse])
 
 case class RepositoryGroup(prefix: String, repos: List[ProxiedRepository]) {
-  if(prefix.substring(1).contains("/")) throw new IllegalArgumentException("Prefix %s for Group Should not contain the / character, except as its first character".format(prefix))
+  if (prefix.substring(1).contains("/")) throw new IllegalArgumentException("Prefix %s for Group Should not contain the / character, except as its first character".format(prefix))
   val hits = new MMap[String, ProxiedRepository]
   val misses = new MMap[String, DateTime]
 }
