@@ -5,7 +5,7 @@ import collection.JavaConversions._
 import com.twitter.logging.{BasicFormatter, Level, Formatter, Handler}
 import com.newrelic.api.agent.NewRelic
 import com.twitter.logging.config.HandlerConfig
-
+import com.twitter.finagle.stats.{Counter, Stat, StatsReceiverWithCumulativeGauges}
 
 class NewRelicLogHandler(formatter: Formatter, level: Option[Level]) extends Handler(formatter, level) {
   def this() = this (BasicFormatter, None)
@@ -33,4 +33,23 @@ class NewRelicLogHandler(formatter: Formatter, level: Option[Level]) extends Han
 
 class NewRelicLogHandlerConfig extends HandlerConfig {
   def apply() = new NewRelicLogHandler(formatter(), level)
+}
+
+object NewRelicStatsReceiver extends StatsReceiverWithCumulativeGauges {
+
+  protected[this] def deregisterGauge(name: Seq[String]) {}
+
+  protected[this] def registerGauge(name: Seq[String], f: => Float) {}
+
+  def stat(name: String*) = new Stat{
+    def add(value: Float) {
+      NewRelic.recordMetric(name mkString "/",value)
+    }
+  }
+
+  def counter(name: String*) = new Counter{
+    def incr(delta: Int) {
+      NewRelic.incrementCounter(name mkString "/")
+    }
+  }
 }
