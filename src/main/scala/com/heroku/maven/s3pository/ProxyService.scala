@@ -1,6 +1,9 @@
 package com.heroku.maven.s3pository
 
+import com.newrelic.api.agent.Trace
+
 import com.twitter.conversions.time._
+import com.twitter.logging.Logger
 import com.twitter.util._
 import com.twitter.finagle.{ServiceFactory, Service}
 import com.twitter.finagle.http.Http
@@ -10,10 +13,10 @@ import collection.immutable.HashMap
 import collection.mutable.{HashMap => MMap}
 import collection.JavaConversions._
 
+import java.lang.IllegalArgumentException
 import java.net.InetSocketAddress
 import javax.crypto.spec.SecretKeySpec
 import javax.crypto.Mac
-import com.twitter.logging.Logger
 
 import org.joda.time.{DateTime, DateTimeZone}
 import org.joda.time.format.DateTimeFormat
@@ -21,8 +24,6 @@ import org.joda.time.format.DateTimeFormat
 import org.jboss.netty.buffer.{ChannelBuffers, ChannelBuffer}
 import org.jboss.netty.handler.codec.http._
 import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
-import java.lang.IllegalArgumentException
-import com.newrelic.api.agent.Trace
 
 /*
 HTTP Service that acts as a caching proxy server for the configured ProxiedRepository(s) and RepositoryGroup(s).

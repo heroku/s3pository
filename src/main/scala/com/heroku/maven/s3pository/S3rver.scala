@@ -3,14 +3,13 @@ package com.heroku.maven.s3pository
 import com.twitter.conversions.storage._
 import com.twitter.finagle.http.Http
 import com.twitter.finagle.builder.ServerBuilder
+import com.twitter.logging.Logger
+import com.twitter.logging.config.{ConsoleHandlerConfig, LoggerConfig}
 
 import java.net.InetSocketAddress
 
-
 import util.Properties
-import com.twitter.logging.{BasicFormatter, Logger}
-import com.twitter.logging.Level.WARNING
-import com.twitter.logging.config.{BasicFormatterConfig, ConsoleHandlerConfig, LoggerConfig}
+
 
 
 object S3rver {
