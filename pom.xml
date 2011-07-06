@@ -115,7 +115,7 @@
                 <version>1.1.1</version>
                 <configuration>
                     <assembleDirectory>target</assembleDirectory>
-                    <generateRepository>true</generateRepository>
+                    <generateRepository>false</generateRepository>
                     <extraJvmArguments>-Xmx256m -Xss256k -javaagent:newrelic/newrelic.jar</extraJvmArguments>
                     <programs>
                         <program>
