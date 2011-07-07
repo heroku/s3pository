@@ -99,11 +99,13 @@ object Stress {
           response =>
             println("onSuccess")
             responses(response.getStatus).incrementAndGet()
-            val devnull = new File("/dev/null")
-            val stream = new FileOutputStream(devnull)
-            response.getContent.readBytes(stream, response.getHeader(CONTENT_LENGTH).toInt)
-            stream.close()
-            println("read")
+            if (response.getStatus.getCode == 200) {
+              val devnull = new File("/dev/null")
+              val stream = new FileOutputStream(devnull)
+              response.getContent.readBytes(stream, response.getHeader(CONTENT_LENGTH).toInt)
+              stream.close()
+              println("read")
+            }
         } handle {
           case e =>
             errors.incrementAndGet()
