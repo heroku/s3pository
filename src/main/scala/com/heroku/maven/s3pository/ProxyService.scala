@@ -71,6 +71,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       .hosts(new InetSocketAddress(host, port))
       .hostConnectionLimit(Integer.MAX_VALUE)
       .hostConnectionMaxIdleTime(5.seconds)
+      .retries(1)
       //.reportTo(NewRelicStatsReceiver)
       .name(host)
     if (ssl) (builder = builder.tlsWithoutValidation())
