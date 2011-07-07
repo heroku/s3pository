@@ -12,6 +12,7 @@ import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
 import com.heroku.maven.s3pository.ProxyService._
 import scala.xml._
 import util.{Random, Properties}
+import java.io.{FileOutputStream, File}
 
 /**
  * Set S3_KEY and S3_SECRET as env vars
@@ -97,8 +98,12 @@ object Stress {
         ) onSuccess {
           response =>
             println("onSuccess")
-            response.getContent.clear()
             responses(response.getStatus).incrementAndGet()
+            val devnull = new File("/dev/null")
+            val stream = new FileOutputStream(devnull)
+            response.getContent.readBytes(stream, response.getHeader(CONTENT_LENGTH).toInt)
+            stream.close()
+            println("read")
         } handle {
           case e =>
             errors.incrementAndGet()
