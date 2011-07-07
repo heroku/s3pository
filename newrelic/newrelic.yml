@@ -9,6 +9,7 @@
 
 # Here are the settings that are common to all environments:
 common: &default_settings
+  enable_custom_tracing: true
   # ============================== LICENSE KEY ===============================
 
   # You must specify the license key associated with your New Relic

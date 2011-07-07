@@ -103,7 +103,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   }
 
   /*main service function for ProxyService, this handles all incoming requests*/
-  @Trace
+  @Trace(dispatcher = true)
   def apply(request: HttpRequest) = {
     log.info("Request for: %s", request.getUri)
     val prefix = getPrefix(request)
