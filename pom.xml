@@ -116,7 +116,6 @@
                 <configuration>
                     <assembleDirectory>target</assembleDirectory>
                     <generateRepository>false</generateRepository>
-                    <extraJvmArguments>-Xmx256m -Xss256k -XX:+UseCompressedOops -javaagent:newrelic/newrelic.jar</extraJvmArguments>
                     <programs>
                         <program>
                             <mainClass>com.heroku.maven.s3pository.S3rver</mainClass>
