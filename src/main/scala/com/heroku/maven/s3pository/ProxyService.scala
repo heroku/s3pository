@@ -40,7 +40,6 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
 
   import ProxyService._
 
-  val log = Logger.get(getClass)
   log.info("creating ProxyService")
   /*Timer used to time box parallel request processing*/
   val timer = new JavaTimer(true)
@@ -240,7 +239,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
                   /*found the content in the source repo, do an async put of the content to S3*/
                   log.info("Serving from Source %s: %s", client.repo.host, contentUri)
                   val s3buffer = response.getContent.duplicate()
-                  putS3(client, request, contentUri, response.getHeader("Content-Type"), s3buffer)
+                  putS3(client, contentUri, response, s3buffer)
                 } else {
                   log.info("Request to Source repo %s: path: %s Status Code: %s", client.repo.host, request.getUri, response.getStatus.getCode)
                 }
@@ -259,20 +258,29 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   }
 
   /*Asynchronously put content to S3*/
-  def putS3(client: Client, request: HttpRequest, contentUri: String, contentType: String, content: ChannelBuffer) {
+  def putS3(client: Client, contentUri: String, response: HttpResponse, content: ChannelBuffer) {
     val s3Put = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.PUT, contentUri)
     s3Put.setContent(content)
     //seems slow and barfs in the log but eventually succeeds. Revisit.
     //s3Put.setHeader("Expect","100-continue")
     s3Put.setHeader(CONTENT_LENGTH, content.readableBytes)
-    s3Put.setHeader(CONTENT_TYPE, contentType)
+    s3Put.setHeader(CONTENT_TYPE, response.getHeader(CONTENT_TYPE))
+    Option(response.getHeader(ETAG)).foreach(s3Put.setHeader(SOURCE_ETAG, _))
+    Option(response.getHeader(LAST_MODIFIED)).foreach(s3Put.setHeader(SOURCE_MOD, _))
+    s3Put.setHeader(STORAGE_CLASS, RRS)
     s3Put.setHeader(HOST, client.repo.bucket + ".s3.amazonaws.com")
     s3Put.setHeader(DATE, date)
     s3Put.setHeader(AUTHORIZATION, authorization(s3key, s3Secret, s3Put, client.repo.bucket))
     client.s3Service.service {
       s3Put
     } onSuccess {
-      resp => log.info("S3Put Success: Code %s, Content %s ", resp.getStatus.getReasonPhrase, resp.getContent.toString("UTF-8"))
+      resp => {
+        if (resp.getStatus.getCode == 200) {
+          log.info("S3Put Success: Code %s, Content %s ", resp.getStatus.getReasonPhrase, resp.getContent.toString("UTF-8"))
+        } else {
+          log.error(new RuntimeException(resp.getContent.toString("UTF-8")), "S3Put did not return a 200")
+        }
+      }
     } onFailure {
       ex => log.error(ex, "Exception in S3 Put: ")
     } onCancellation {
@@ -303,8 +311,16 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
 }
 
 object ProxyService {
+  val log = Logger.get(classOf[ProxyService])
+
   /*DateTime format required by AWS*/
   lazy val format = DateTimeFormat.forPattern("EEE, dd MMM yyyy HH:mm:ss z").withLocale(java.util.Locale.US).withZone(DateTimeZone.forOffsetHours(0))
+
+  val SOURCE_ETAG = "x-amz-meta-source-etag"
+  val SOURCE_MOD = "x-amz-meta-source-mod"
+  val STORAGE_CLASS = "x-amz-storage-class"
+  val AMZN_HEADERS = List(SOURCE_ETAG, SOURCE_MOD, STORAGE_CLASS)
+  val RRS = "REDUCED_REDUNDANCY"
 
   def date: String = format.print(new DateTime)
 
@@ -316,8 +332,18 @@ object ProxyService {
       Option(request.getHeader(CONTENT_MD5)).getOrElse(""),
       Option(request.getHeader(CONTENT_TYPE)).getOrElse(""),
       request.getHeader(DATE)
-    ).foldLeft("")(_ + _ + "\n") + "/" + bucket + request.getUri
+    ).foldLeft("")(_ + _ + "\n") + normalizeAmzHeaders(request) + "/" + bucket + request.getUri
+    log.debug(data)
     calculateHMAC(secret, data)
+  }
+
+  def normalizeAmzHeaders(request: HttpRequest): String = {
+    AMZN_HEADERS.foldLeft("") {
+      (str, h) => {
+        Option(request.getHeader(h)).flatMap(v => Some(str + h + ":" + v + "\n")).getOrElse(str)
+      }
+    }
+
   }
 
   def authorization(s3key: String, s3Secret: String, req: HttpRequest, bucket: String): String = {
