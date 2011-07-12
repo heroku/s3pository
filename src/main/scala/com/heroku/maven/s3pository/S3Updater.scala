@@ -172,7 +172,7 @@ object S3Updater {
       .sendBufferSize(1048576)
       .recvBufferSize(1048576)
       .hosts(new InetSocketAddress(host, port))
-      .hostConnectionLimit(8)
+      .hostConnectionLimit(16)
       .keepAlive(true)
       .hostConnectionMaxWaiters(Integer.MAX_VALUE)
       .requestTimeout(30.seconds)
