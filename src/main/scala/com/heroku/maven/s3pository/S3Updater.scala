@@ -31,7 +31,7 @@ object S3Updater {
     Logger.clearHandlers()
     val logConf = new LoggerConfig {
       node = ""
-      level = Logger.levelNames.get(Properties.envOrElse("LOG_LEVEL", "INFO"))
+      level = Logger.levelNames.get(Properties.envOrElse("UPDATER_LOG_LEVEL", "INFO"))
       handlers = List(new ConsoleHandlerConfig, new NewRelicLogHandlerConfig)
     }
     logConf.apply()
@@ -116,7 +116,7 @@ object S3Updater {
       }
     }
     s3Client.release()
-
+    System.exit(0)
   }
 
   /*get the keys in an s3bucket, s3 only returns up to 1000 at a time so this can be called recursively*/
