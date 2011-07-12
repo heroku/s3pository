@@ -9,7 +9,6 @@ import java.net.{InetSocketAddress, URI}
 import com.twitter.util.{Time, Future, MapMaker}
 import org.jboss.netty.handler.codec.http._
 import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
-import com.heroku.maven.s3pository.ProxyService._
 import scala.xml._
 import util.{Random, Properties}
 import java.io.{FileOutputStream, File}
@@ -56,10 +55,8 @@ object Stress {
       .hostConnectionLimit(concurrency)
       .build()
 
-    val listRequest = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/")
-    listRequest.setHeader(HOST, bucket + ".s3.amazonaws.com")
-    listRequest.setHeader(DATE, date)
-    listRequest.setHeader(AUTHORIZATION, authorization(s3key, s3secret, listRequest, bucket))
+
+    val listRequest = get("/").s3headers(s3key, s3secret, bucket)
 
     //get the keys in the bucket
     val xResp = XML.loadString(listClient(listRequest).get().getContent.toString("UTF-8"))
@@ -89,10 +86,9 @@ object Stress {
 
     val requests = Future.parallel(concurrency) {
       Future.times(totalRequests / concurrency) {
-        val request = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri.getPath + keyList.head)
+        val request = get(uri.getPath + keyList.head).headers(Map(HOST -> uri.getHost))
         //dont particularly care about thread safety
         keyList = keyList.tail
-        HttpHeaders.setHost(request, uri.getHost)
         println("making request")
         client(request
         ) onSuccess {

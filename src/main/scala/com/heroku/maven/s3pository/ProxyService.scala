@@ -15,12 +15,7 @@ import collection.JavaConversions._
 
 import java.lang.IllegalArgumentException
 import java.net.InetSocketAddress
-import javax.crypto.spec.SecretKeySpec
-import javax.crypto.Mac
-
-import org.joda.time.{DateTime, DateTimeZone}
-import org.joda.time.format.DateTimeFormat
-
+import org.joda.time.DateTime
 import org.jboss.netty.buffer.{ChannelBuffers, ChannelBuffer}
 import org.jboss.netty.handler.codec.http._
 import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
@@ -60,31 +55,12 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       (m, g) => m + (g.prefix -> g)
     }
   }
-  /*Build a Client ServiceFactory for the given endpoint*/
-  def clientService(host: String, port: Int, ssl: Boolean): ServiceFactory[HttpRequest, HttpResponse] = {
-    import com.twitter.conversions.storage._
-    var builder = ClientBuilder()
-      .codec(Http(_maxRequestSize = 100.megabytes, _maxResponseSize = 100.megabyte))
-      .sendBufferSize(1048576)
-      .recvBufferSize(1048576)
-      .hosts(new InetSocketAddress(host, port))
-      .hostConnectionLimit(Integer.MAX_VALUE)
-      .hostConnectionMaxIdleTime(5.seconds)
-      .retries(1)
-      //.reportTo(NewRelicStatsReceiver)
-      .name(host)
-    if (ssl) (builder = builder.tlsWithoutValidation())
-    builder.buildFactory()
-  }
+
 
   /*Create any missing S3 buckets. Create bucket is idempotent, and returns a 200 if the bucket exists or is created*/
   def createBucket(client: Client) {
     log.debug("creating bucket: %s".format(client.repo.bucket))
-    val s3request = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.PUT, "/")
-    s3request.setHeader(HOST, client.repo.bucket + ".s3.amazonaws.com")
-    s3request.setHeader(DATE, date)
-    s3request.setHeader(CONTENT_LENGTH, "0")
-    s3request.setHeader(AUTHORIZATION, "AWS " + s3key + ":" + sign(s3Secret, s3request, client.repo.bucket))
+    val s3request = put("/").headers(Map(HOST -> bucketHost(client.repo.bucket), DATE -> amzDate, CONTENT_LENGTH -> "0")).sign(s3key, s3Secret, client.repo.bucket)
     client.s3Service.service(s3request) onSuccess {
       response =>
         if (response.getStatus.getCode != 200) {
@@ -215,10 +191,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   */
   @Trace
   def singleRepoRequest(client: Client, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
-    val s3request: DefaultHttpRequest = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, contentUri)
-    s3request.setHeader(HOST, client.repo.bucket + ".s3.amazonaws.com")
-    s3request.setHeader(DATE, date)
-    s3request.setHeader(AUTHORIZATION, authorization(s3key, s3Secret, s3request, client.repo.bucket))
+    val s3request: DefaultHttpRequest = get(contentUri).headers(Map(HOST -> bucketHost(client.repo.bucket), DATE -> amzDate)).sign(s3key, s3Secret, client.repo.bucket)
     /*Check S3 cache first*/
     client.s3Service.service(s3request).flatMap {
       s3response => {
@@ -232,7 +205,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
           case code if (code == 404) => {
             val uri = client.repo.hostPath + contentUri
             request.setUri(uri)
-            request.setHeader("Host", client.repo.host)
+            request.setHeader(HOST, client.repo.host)
             client.repoService.service(request).flatMap {
               response => {
                 if (response.getStatus == HttpResponseStatus.OK) {
@@ -259,18 +232,14 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
 
   /*Asynchronously put content to S3*/
   def putS3(client: Client, contentUri: String, response: HttpResponse, content: ChannelBuffer) {
-    val s3Put = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.PUT, contentUri)
+    val s3Put = put(contentUri).headers(Map(CONTENT_LENGTH -> content.readableBytes.toString, DATE->amzDate,
+      CONTENT_TYPE -> response.getHeader(CONTENT_TYPE), STORAGE_CLASS -> RRS, HOST -> bucketHost(client.repo.bucket)))
     s3Put.setContent(content)
     //seems slow and barfs in the log but eventually succeeds. Revisit.
     //s3Put.setHeader("Expect","100-continue")
-    s3Put.setHeader(CONTENT_LENGTH, content.readableBytes)
-    s3Put.setHeader(CONTENT_TYPE, response.getHeader(CONTENT_TYPE))
     Option(response.getHeader(ETAG)).foreach(s3Put.setHeader(SOURCE_ETAG, _))
     Option(response.getHeader(LAST_MODIFIED)).foreach(s3Put.setHeader(SOURCE_MOD, _))
-    s3Put.setHeader(STORAGE_CLASS, RRS)
-    s3Put.setHeader(HOST, client.repo.bucket + ".s3.amazonaws.com")
-    s3Put.setHeader(DATE, date)
-    s3Put.setHeader(AUTHORIZATION, authorization(s3key, s3Secret, s3Put, client.repo.bucket))
+    s3Put.sign(s3key, s3Secret, client.repo.bucket)
     client.s3Service.service {
       s3Put
     } onSuccess {
@@ -287,7 +256,6 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       log.error("S3Put cancelled %s", s3Put.toString)
     }
   }
-
 
   /*get the prefix from the request URI. e.g. /someprefix/some/other/path returns /someprefix */
   def getPrefix(request: HttpRequest): String = {
@@ -312,52 +280,6 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
 
 object ProxyService {
   val log = Logger.get(classOf[ProxyService])
-
-  /*DateTime format required by AWS*/
-  lazy val format = DateTimeFormat.forPattern("EEE, dd MMM yyyy HH:mm:ss z").withLocale(java.util.Locale.US).withZone(DateTimeZone.forOffsetHours(0))
-
-  val SOURCE_ETAG = "x-amz-meta-source-etag"
-  val SOURCE_MOD = "x-amz-meta-source-mod"
-  val STORAGE_CLASS = "x-amz-storage-class"
-  val AMZN_HEADERS = List(SOURCE_ETAG, SOURCE_MOD, STORAGE_CLASS)
-  val RRS = "REDUCED_REDUNDANCY"
-
-  def date: String = format.print(new DateTime)
-
-  val ALGORITHM = "HmacSHA1"
-  /*Create the Authorization payload and sign it with the AWS secret*/
-  def sign(secret: String, request: HttpRequest, bucket: String): String = {
-    val data = List(
-      request.getMethod.getName,
-      Option(request.getHeader(CONTENT_MD5)).getOrElse(""),
-      Option(request.getHeader(CONTENT_TYPE)).getOrElse(""),
-      request.getHeader(DATE)
-    ).foldLeft("")(_ + _ + "\n") + normalizeAmzHeaders(request) + "/" + bucket + request.getUri
-    log.debug(data)
-    calculateHMAC(secret, data)
-  }
-
-  def normalizeAmzHeaders(request: HttpRequest): String = {
-    AMZN_HEADERS.foldLeft("") {
-      (str, h) => {
-        Option(request.getHeader(h)).flatMap(v => Some(str + h + ":" + v + "\n")).getOrElse(str)
-      }
-    }
-
-  }
-
-  def authorization(s3key: String, s3Secret: String, req: HttpRequest, bucket: String): String = {
-    "AWS " + s3key + ":" + sign(s3Secret, req, bucket)
-  }
-
-  /*Sign the authorization payload*/
-  private def calculateHMAC(key: String, data: String): String = {
-    val signingKey = new SecretKeySpec(key.getBytes("UTF-8"), ALGORITHM)
-    val mac = Mac.getInstance(ALGORITHM)
-    mac.init(signingKey)
-    val rawHmac = mac.doFinal(data.getBytes())
-    new sun.misc.BASE64Encoder().encode(rawHmac)
-  }
 
   def notFound = {
     val resp = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.NOT_FOUND)
@@ -399,6 +321,25 @@ object ProxyService {
     }
     cloned
   }
+
+  /*Build a Client ServiceFactory for the given endpoint*/
+  def clientService(host: String, port: Int, ssl: Boolean): ServiceFactory[HttpRequest, HttpResponse] = {
+    import com.twitter.conversions.storage._
+    var builder = ClientBuilder()
+      .codec(Http(_maxRequestSize = 100.megabytes, _maxResponseSize = 100.megabyte))
+      .sendBufferSize(1048576)
+      .recvBufferSize(1048576)
+      .hosts(new InetSocketAddress(host, port))
+      .hostConnectionLimit(Integer.MAX_VALUE)
+      .hostConnectionMaxIdleTime(5.seconds)
+      .retries(1)
+      //.reportTo(NewRelicStatsReceiver)
+      .name(host)
+    if (ssl) (builder = builder.tlsWithoutValidation())
+    builder.buildFactory()
+  }
+
+
 }
 
 
