@@ -21,10 +21,10 @@ import util.Properties
 import xml.XML
 
 
-
 /*checks for updated artifacts in source repos*/
 object S3Updater {
 
+  type Client = Service[HttpRequest, HttpResponse]
   lazy val log = Logger.get("S3Server-Updater")
 
   def main(args: Array[String]) {
@@ -49,67 +49,11 @@ object S3Updater {
         val sourceClient = client(proxy)
 
         val keys = getKeys(s3Client, proxy.bucket)
-
-        val futures: Seq[Future[HttpResponse]] = keys map {
-          key => {
-            /*get the orig last modified and or etag from s3, either or both can be null*/
-            val metaReq = head("/" + key).s3headers(s3key, s3secret, proxy.bucket)
-            log.debug("checking %s for %s", proxy.bucket, key)
-            val future = s3Client(metaReq).onFailure(log.error(_, "error getting s3 metadata for %s in %s", key, proxy.bucket))
-            future flatMap {
-              metaResp => {
-                if ((metaResp.getHeader(SOURCE_ETAG) ne null) || (metaResp.getHeader(SOURCE_MOD) ne null)) {
-                  /*s3 had a source etag or last mod*/
-                  /*do a head on the origin repo and compare*/
-                  val sourceReq = head(proxy.hostPath + "/" + key).headers(Map(HOST -> proxy.host))
-                  sourceClient(sourceReq).onFailure(log.error(_, "error checking source %s for %s", proxy.host, sourceReq.getUri)).flatMap {
-                    sourceResp => {
-                      if (sourceResp.getStatus.getCode == 200) {
-                        /*we compare etag first*/
-                        if (metaResp.getHeader(SOURCE_ETAG) ne null) {
-                          if (!metaResp.getHeader(SOURCE_ETAG).equals(sourceResp.getHeader(ETAG))) {
-                            log.warning("etag for %s changed, updating in S3", sourceReq.getUri)
-                            sourceReq.setMethod(HttpMethod.GET)
-                            updateS3(sourceClient, s3Client, proxy.bucket, "/" + key, sourceReq)
-                          } else {
-                            log.debug("etag for %s unchanged", sourceReq.getUri)
-                            Future.value(ok())
-                          }
-                        } else {
-                          /*otherwise chech mod date*/
-                          if (!metaResp.getHeader(SOURCE_MOD).equals(sourceResp.getHeader(LAST_MODIFIED))) {
-                            log.warning("last changed date for %s changed, updating in S3", sourceReq.getUri)
-                            updateS3(sourceClient, s3Client, proxy.bucket, "/" + key, sourceReq)
-                          } else {
-                            log.debug("last changed date for %s unchanged", sourceReq.getUri)
-                            Future.value(ok())
-                          }
-                        }
-                      } else {
-                        log.warning("attempetd to get %s from %s, code %s", sourceReq.getUri, proxy.host, sourceResp.getStatus.getCode.toString)
-                        Future.value(ok())
-                      }
-                    }
-                  }
-                } else {
-                  log.debug("no etag or mod date for %s", key)
-                  Future.value(ok())
-                }
-              }
-            }
-          }
+        //do in batches of 100 to keep queue depths and memory consumption down
+        keys.grouped(100) foreach {
+          keygroup => doUpdate(s3Client, sourceClient, proxy, keygroup)
         }
 
-        /*wait for responses*/
-        Future.collect(futures).get().foreach {
-          resp => {
-            if (resp.getStatus.getCode == 200) {
-              log.debug("S3Updater Success: Code %s, Content %s ", resp.getStatus.getReasonPhrase, resp.getContent.toString("UTF-8"))
-            } else {
-              log.error(new RuntimeException(resp.getContent.toString("UTF-8")), "S3Put did not return a 200")
-            }
-          }
-        }
         sourceClient.release()
 
 
@@ -117,6 +61,69 @@ object S3Updater {
     }
     s3Client.release()
     System.exit(0)
+  }
+
+  def doUpdate(s3Client: Client, sourceClient: Client, proxy:ProxiedRepository, keys: List[String]) {
+    val futures: Seq[Future[HttpResponse]] = keys map {
+      key => {
+        /*get the orig last modified and or etag from s3, either or both can be null*/
+        val metaReq = head("/" + key).s3headers(s3key, s3secret, proxy.bucket)
+        log.debug("checking %s for %s", proxy.bucket, key)
+        val future = s3Client(metaReq).onFailure(log.error(_, "error getting s3 metadata for %s in %s", key, proxy.bucket))
+        future flatMap {
+          metaResp => {
+            if ((metaResp.getHeader(SOURCE_ETAG) ne null) || (metaResp.getHeader(SOURCE_MOD) ne null)) {
+              /*s3 had a source etag or last mod*/
+              /*do a head on the origin repo and compare*/
+              val sourceReq = head(proxy.hostPath + "/" + key).headers(Map(HOST -> proxy.host))
+              sourceClient(sourceReq).onFailure(log.error(_, "error checking source %s for %s", proxy.host, sourceReq.getUri)).flatMap {
+                sourceResp => {
+                  if (sourceResp.getStatus.getCode == 200) {
+                    /*we compare etag first*/
+                    if (metaResp.getHeader(SOURCE_ETAG) ne null) {
+                      if (!metaResp.getHeader(SOURCE_ETAG).equals(sourceResp.getHeader(ETAG))) {
+                        log.warning("etag for %s changed, updating in S3", sourceReq.getUri)
+                        sourceReq.setMethod(HttpMethod.GET)
+                        updateS3(sourceClient, s3Client, proxy.bucket, "/" + key, sourceReq)
+                      } else {
+                        log.debug("etag for %s unchanged", sourceReq.getUri)
+                        Future.value(ok())
+                      }
+                    } else {
+                      /*otherwise chech mod date*/
+                      if (!metaResp.getHeader(SOURCE_MOD).equals(sourceResp.getHeader(LAST_MODIFIED))) {
+                        log.warning("last changed date for %s changed, updating in S3", sourceReq.getUri)
+                        updateS3(sourceClient, s3Client, proxy.bucket, "/" + key, sourceReq)
+                      } else {
+                        log.debug("last changed date for %s unchanged", sourceReq.getUri)
+                        Future.value(ok())
+                      }
+                    }
+                  } else {
+                    log.warning("attempetd to get %s from %s, code %s", sourceReq.getUri, proxy.host, sourceResp.getStatus.getCode.toString)
+                    Future.value(ok())
+                  }
+                }
+              }
+            } else {
+              log.debug("no etag or mod date for %s", key)
+              Future.value(ok())
+            }
+          }
+        }
+      }
+    }
+
+    /*wait for responses*/
+    Future.collect(futures).get().foreach {
+      resp => {
+        if (resp.getStatus.getCode == 200) {
+          log.debug("S3Updater Success: Code %s, Content %s ", resp.getStatus.getReasonPhrase, resp.getContent.toString("UTF-8"))
+        } else {
+          log.error(new RuntimeException(resp.getContent.toString("UTF-8")), "S3Put did not return a 200")
+        }
+      }
+    }
   }
 
   /*get the keys in an s3bucket, s3 only returns up to 1000 at a time so this can be called recursively*/
@@ -162,11 +169,11 @@ object S3Updater {
     }
   }
 
-  def client(repo: ProxiedRepository): Service[HttpRequest, HttpResponse] = {
+  def client(repo: ProxiedRepository): Client = {
     client(repo.host, repo.port, repo.ssl)
   }
 
-  def client(host: String, port: Int = 80, ssl: Boolean = false): Service[HttpRequest, HttpResponse] = {
+  def client(host: String, port: Int = 80, ssl: Boolean = false): Client = {
     var builder = ClientBuilder()
       .codec(Http(_maxRequestSize = 100.megabytes, _maxResponseSize = 100.megabyte))
       .sendBufferSize(1048576)
