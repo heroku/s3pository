@@ -208,7 +208,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
             request.setHeader(HOST, client.repo.host)
             client.repoService.service(request).flatMap {
               response => {
-                if (response.getStatus == HttpResponseStatus.OK) {
+                if (response.getStatus == HttpResponseStatus.OK && (request.getMethod equals HttpMethod.GET)) {
                   /*found the content in the source repo, do an async put of the content to S3*/
                   log.info("Serving from Source %s: %s", client.repo.host, contentUri)
                   val s3buffer = response.getContent.duplicate()
