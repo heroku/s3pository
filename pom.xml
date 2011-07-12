@@ -121,6 +121,10 @@
                             <mainClass>com.heroku.maven.s3pository.S3rver</mainClass>
                             <name>s3rver</name>
                         </program>
+                         <program>
+                            <mainClass>com.heroku.maven.s3pository.S3Updater</mainClass>
+                            <name>s3updater</name>
+                        </program>
                     </programs>
                 </configuration>
                 <executions>
