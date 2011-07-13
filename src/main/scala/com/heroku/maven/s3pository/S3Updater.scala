@@ -28,6 +28,7 @@ object S3Updater {
   type Client = Service[HttpRequest, HttpResponse]
   lazy val log = Logger.get("S3Server-Updater")
   lazy val stats = new SummarizingStatsReceiver
+
   def main(args: Array[String]) {
     Logger.clearHandlers()
     val logConf = new LoggerConfig {
@@ -51,7 +52,8 @@ object S3Updater {
 
         val keys = getKeys(s3Client, proxy.bucket)
         //do in batches of 100 to keep queue depths and memory consumption down
-        keys.grouped(100) foreach {
+        if(args.size > 0) log.info("filtering keys with " + args.mkString(" | "))
+        keys.filter(args.size == 0 || contains(_, args.toList)).grouped(100) foreach {
           keygroup => doUpdate(s3Client, sourceClient, proxy, keygroup)
         }
 
@@ -65,7 +67,16 @@ object S3Updater {
     System.exit(0)
   }
 
-  def doUpdate(s3Client: Client, sourceClient: Client, proxy:ProxiedRepository, keys: List[String]) {
+  def contains(key: String, filters: List[String]): Boolean = {
+    filters.headOption match {
+      case None => false
+      case Some(filter) => {
+        key.contains(filter) || contains(key, filters.tail)
+      }
+    }
+  }
+
+  def doUpdate(s3Client: Client, sourceClient: Client, proxy: ProxiedRepository, keys: List[String]) {
     val futures: Seq[Future[HttpResponse]] = keys map {
       key => {
         /*get the orig last modified and or etag from s3, either or both can be null*/
