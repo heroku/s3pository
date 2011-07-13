@@ -19,6 +19,7 @@ import org.jboss.netty.handler.codec.http._
 import util.Properties
 
 import xml.XML
+import com.twitter.finagle.stats.SummarizingStatsReceiver
 
 
 /*checks for updated artifacts in source repos*/
@@ -26,7 +27,7 @@ object S3Updater {
 
   type Client = Service[HttpRequest, HttpResponse]
   lazy val log = Logger.get("S3Server-Updater")
-
+  lazy val stats = new SummarizingStatsReceiver
   def main(args: Array[String]) {
     Logger.clearHandlers()
     val logConf = new LoggerConfig {
@@ -60,6 +61,7 @@ object S3Updater {
       }
     }
     s3Client.release()
+    log.warning(stats.summary)
     System.exit(0)
   }
 
@@ -185,6 +187,7 @@ object S3Updater {
       .requestTimeout(30.seconds)
       .connectionTimeout(5.seconds)
       .name(host)
+      .reportTo(stats)
     if (ssl) (builder = builder.tlsWithoutValidation())
     builder.build()
   }
