@@ -144,7 +144,10 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
         log.info("parallel request for %s to %s", contentUri, repo.host)
         /*clone the request and send to the proxied repo that will timeout and return a 504 after 10 seconds*/
         val future = singleRepoRequest(client, contentUri, cloneRequest(request)).within(timer, 10.seconds) handle {
-          case _: TimeoutException => timeout
+          case _: TimeoutException => {
+            log.warning("request for % to %s timed out", contentUri, repo.hostPath)
+            timeout
+          }
         }
         HitTracker(client, future)
       }
