@@ -236,7 +236,8 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
             request.setHeader(HOST, client.repo.host)
             client.repoService.tryService(request, timeout, client.repo.host).handle {
               case ex@_ => {
-                log.error(ex, "error checking source repo %s for %s", client.repo.host, contentUri)
+                log.warning("error checking source repo %s for %s: %s", client.repo.host, contentUri, ex.getClass.getSimpleName)
+                log.debug(ex,"error checking source repo %s for %s: %s", client.repo.host, contentUri, ex.getClass.getSimpleName)
                 timeout
               }
             }.flatMap {
