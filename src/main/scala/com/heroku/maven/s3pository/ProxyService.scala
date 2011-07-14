@@ -20,6 +20,7 @@ import org.jboss.netty.buffer.{ChannelBuffers, ChannelBuffer}
 import org.jboss.netty.handler.codec.http._
 import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
 import xml.XML
+import com.twitter.util.Future.CancelledException
 
 /*
 HTTP Service that acts as a caching proxy server for the configured ProxiedRepository(s) and RepositoryGroup(s).
@@ -156,10 +157,13 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       repo => {
         val client = clients.get(repo.prefix).get
         log.debug("parallel request for %s to %s", contentUri, repo.host)
-        /*clone the request and send to the proxied repo that will timeout and return a 504 after 10 seconds*/
-        singleRepoRequest(client, contentUri, cloneRequest(request)).within(timer, 10.seconds).handle {
+        /*clone the request and send to the proxied repo that will timeout and return a 504 after 6 seconds*/
+        singleRepoRequest(client, contentUri, cloneRequest(request)).within(timer, 6.seconds).handle {
           case _: TimeoutException => {
             log.warning("timeout in parallel req to %s for %s", client.repo.host, contentUri)
+            timeout
+          }
+          case _: CancelledException => {
             timeout
           }
           case _@ex => {
@@ -212,7 +216,12 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   def singleRepoRequest(client: Client, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
     val s3request: DefaultHttpRequest = get(contentUri).headers(Map(HOST -> bucketHost(client.repo.bucket), DATE -> amzDate)).sign(client.repo.bucket)
     /*Check S3 cache first*/
-    client.s3Service.service(s3request).flatMap {
+    client.s3Service.tryService(s3request,timeout, client.repo.host).handle {
+      case ex@_ => {
+        log.error(ex, "error checking s3 bucket %s for %s", client.repo.bucket, contentUri)
+        timeout
+      }
+    }.flatMap {
       s3response => {
         s3response.getStatus.getCode match {
           /*S3 has the content, return it*/
@@ -225,7 +234,12 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
             val uri = client.repo.hostPath + contentUri
             request.setUri(uri)
             request.setHeader(HOST, client.repo.host)
-            client.repoService.service(request).flatMap {
+            client.repoService.tryService(request, timeout, client.repo.host).handle {
+              case ex@_ => {
+                log.error(ex, "error checking source repo %s for %s", client.repo.host, contentUri)
+                timeout
+              }
+            }.flatMap {
               response => {
                 if (response.getStatus == HttpResponseStatus.OK && (request.getMethod equals HttpMethod.GET)) {
                   /*found the content in the source repo, do an async put of the content to S3*/
@@ -352,6 +366,7 @@ object ProxyService {
       .hostConnectionLimit(Integer.MAX_VALUE)
       .hostConnectionMaxIdleTime(5.seconds)
       .retries(1)
+      .failureAccrualParams(2, 60.seconds)
       //.reportTo(NewRelicStatsReceiver)
       .name(host)
     if (ssl) (builder = builder.tlsWithoutValidation())

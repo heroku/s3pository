@@ -12,6 +12,9 @@ import org.joda.time.{DateTimeZone, DateTime}
 
 import com.twitter.logging.Logger
 import org.jboss.netty.handler.codec.http._
+import com.twitter.finagle.ServiceFactory
+import com.twitter.util.Future
+import java.lang.ref.ReferenceQueue
 
 package object s3pository {
 
@@ -40,12 +43,12 @@ package object s3pository {
       req
     }
 
-    def sign(bucket: String)(implicit s3key:S3Key, s3secret:S3Secret): DefaultHttpRequest = {
+    def sign(bucket: String)(implicit s3key: S3Key, s3secret: S3Secret): DefaultHttpRequest = {
       req.setHeader(AUTHORIZATION, authorization(s3key.key, s3secret.secret, req, bucket))
       req
     }
 
-    def s3headers(bucket: String)(implicit s3key:S3Key, s3secret:S3Secret): DefaultHttpRequest = {
+    def s3headers(bucket: String)(implicit s3key: S3Key, s3secret: S3Secret): DefaultHttpRequest = {
       headers(Map(HOST -> bucketHost(bucket), DATE -> amzDate)).sign(bucket)
     }
 
@@ -60,8 +63,20 @@ package object s3pository {
 
   }
 
-
   implicit def reqToRichReq(req: DefaultHttpRequest): RichHttpRequest = new RichHttpRequest(req)
+
+  class RichServiceFactory[Req, Res](val fact: ServiceFactory[Req, Res]) {
+    def tryService(req: Req, otherwise: Res, msg:String): Future[Res] = {
+      if(fact.isAvailable) fact.service(req)
+      else {
+        log.warning("service factory for: %s ->unavailable due to failure accrual",msg)
+        Future.value(otherwise)
+      }
+    }
+
+  }
+  implicit def factToRichFact[Req,Res](fact: ServiceFactory[Req,Res]): RichServiceFactory[Req,Res] = new RichServiceFactory[Req,Res](fact)
+
 
   /*req creation sugar*/
   def get(uri: String) = new DefaultHttpRequest(HTTP_1_1, GET, uri)
