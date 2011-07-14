@@ -32,7 +32,7 @@ will respond to a request for
 by making requests to
     http://source.repo.com/path/to/repo/some/artifact.ext
 */
-class ProxyService(repositories: List[ProxiedRepository], groups: List[RepositoryGroup], s3key: String, s3Secret: String) extends Service[HttpRequest, HttpResponse] {
+class ProxyService(repositories: List[ProxiedRepository], groups: List[RepositoryGroup])(implicit s3key:S3Key, s3secret:S3Secret) extends Service[HttpRequest, HttpResponse] {
 
   import ProxyService._
 
@@ -49,7 +49,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   }
   /*create/verify all S3 buckets at creation time*/
   clients.values.foreach(createBucket(_))
-  log.info("S3 Buckets verified")
+  log.warning("S3 Buckets verified")
 
 
   val repositoryGroups: HashMap[String, RepositoryGroup] = {
@@ -59,13 +59,13 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   }
 
   repositoryGroups.values.foreach(primeHitCaches(_))
-  log.info("Hit Cache populated")
+  log.warning("Hit Cache populated")
 
   def primeHitCaches(group: RepositoryGroup) {
     group.repos.reverse.foreach {
       repo =>
         log.debug("priming hit cache from %s",repo.bucket)
-        val keys = getKeys(clients.get(repo.prefix).get.s3Service.service, s3key, s3Secret, repo.bucket)
+        val keys = getKeys(clients.get(repo.prefix).get.s3Service.service, repo.bucket)
         keys.foreach(key => group.hits += (("/" + key) -> repo))
     }
   }
@@ -74,7 +74,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   /*Create any missing S3 buckets. Create bucket is idempotent, and returns a 200 if the bucket exists or is created*/
   def createBucket(client: Client) {
     log.debug("creating bucket: %s".format(client.repo.bucket))
-    val s3request = put("/").headers(Map(HOST -> bucketHost(client.repo.bucket), DATE -> amzDate, CONTENT_LENGTH -> "0")).sign(s3key, s3Secret, client.repo.bucket)
+    val s3request = put("/").headers(Map(HOST -> bucketHost(client.repo.bucket), DATE -> amzDate, CONTENT_LENGTH -> "0")).sign(client.repo.bucket)
     client.s3Service.service(s3request) onSuccess {
       response =>
         if (response.getStatus.getCode != 200) {
@@ -205,7 +205,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   */
   @Trace
   def singleRepoRequest(client: Client, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
-    val s3request: DefaultHttpRequest = get(contentUri).headers(Map(HOST -> bucketHost(client.repo.bucket), DATE -> amzDate)).sign(s3key, s3Secret, client.repo.bucket)
+    val s3request: DefaultHttpRequest = get(contentUri).headers(Map(HOST -> bucketHost(client.repo.bucket), DATE -> amzDate)).sign(client.repo.bucket)
     /*Check S3 cache first*/
     client.s3Service.service(s3request).flatMap {
       s3response => {
@@ -253,7 +253,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     //s3Put.setHeader("Expect","100-continue")
     Option(response.getHeader(ETAG)).foreach(s3Put.setHeader(SOURCE_ETAG, _))
     Option(response.getHeader(LAST_MODIFIED)).foreach(s3Put.setHeader(SOURCE_MOD, _))
-    s3Put.sign(s3key, s3Secret, client.repo.bucket)
+    s3Put.sign(client.repo.bucket)
     client.s3Service.service {
       s3Put
     } onSuccess {
@@ -354,8 +354,8 @@ object ProxyService {
   }
 
   /*get the keys in an s3bucket, s3 only returns up to 1000 at a time so this can be called recursively*/
-  def getKeys(client: Service[HttpRequest, HttpResponse], s3key: String, s3secret: String, bucket: String, marker: Option[String] = None): List[String] = {
-    val listRequest = get("/").s3headers(s3key, s3secret, bucket)
+  def getKeys(client: Service[HttpRequest, HttpResponse], bucket: String, marker: Option[String] = None)(implicit s3key:S3Key, s3secret:S3Secret): List[String] = {
+    val listRequest = get("/").s3headers(bucket)
     marker.foreach(m => listRequest.query(Map("marker" -> m)))
     val listResp = client(listRequest).onFailure(log.error(_, "error getting keys for bucket %s marker %s", bucket, marker)).get()
     val respStr = listResp.getContent.toString("UTF-8")
@@ -364,9 +364,9 @@ object ProxyService {
 
     val keys = (xResp \\ "Contents" \\ "Key") map (_.text) toList
     val truncated = ((xResp \ "IsTruncated") map (_.text.toBoolean))
-    log.warning("Got %s keys for %s", keys.size.toString, bucket)
+    log.info("Got %s keys for %s", keys.size.toString, bucket)
     if (truncated.head) {
-      keys ++ getKeys(client, s3key, s3secret, bucket, Some(keys.last))
+      keys ++ getKeys(client, bucket, Some(keys.last))
     } else {
       keys
     }
@@ -391,6 +391,8 @@ case class RepositoryGroup(prefix: String, repos: List[ProxiedRepository]) {
 /*Holds a ProxiedRepository and the associated source and s3 client ServiceFactories*/
 case class Client(repoService: ServiceFactory[HttpRequest, HttpResponse], s3Service: ServiceFactory[HttpRequest, HttpResponse], repo: ProxiedRepository)
 
+case class S3Key(key:String)
+case class S3Secret(secret:String)
 
 
 

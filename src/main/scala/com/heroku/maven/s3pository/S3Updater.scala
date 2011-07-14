@@ -50,7 +50,7 @@ object S3Updater {
       proxy: ProxiedRepository => {
         val sourceClient = client(proxy)
 
-        val keys = getKeys(s3Client, s3key, s3secret, proxy.bucket)
+        val keys = getKeys(s3Client, proxy.bucket)
         stats.counter("bucket", proxy.bucket, "totalkeys").incr(keys.size)
         //do in batches of 100 to keep queue depths and memory consumption down
         if (args.size > 0) log.info("filtering keys with " + args.mkString(" | "))
@@ -87,7 +87,7 @@ object S3Updater {
     val futures: Seq[Future[HttpResponse]] = keys map {
       key => {
         /*get the orig last modified and or etag from s3, either or both can be null*/
-        val metaReq = head("/" + key).s3headers(s3key, s3secret, proxy.bucket)
+        val metaReq = head("/" + key).s3headers(proxy.bucket)
         log.debug("checking %s for %s", proxy.bucket, key)
         val future = s3Client(metaReq).onFailure(log.error(_, "error getting s3 metadata for %s in %s", key, proxy.bucket))
         future flatMap {
@@ -158,7 +158,7 @@ object S3Updater {
     req.setMethod(HttpMethod.GET)
     sourceClient(req).onFailure(log.error(_, "error on GET %s to update S3 bucket %s", req.getUri, bucket)).flatMap {
       response =>
-        val s3del = delete(contentUri).s3headers(s3key, s3secret, bucket)
+        val s3del = delete(contentUri).s3headers(bucket)
         s3Client(s3del).onFailure(log.error(_, "error on DEL %s to update S3 bucket %s", s3del.getUri, bucket)).flatMap {
           delResp => {
             val s3Put = put(contentUri).headers(Map(CONTENT_LENGTH -> response.getContent.readableBytes.toString,
@@ -169,7 +169,7 @@ object S3Updater {
             Option(response.getHeader(ETAG)).foreach(s3Put.setHeader(SOURCE_ETAG, _))
             Option(response.getHeader(LAST_MODIFIED)).foreach(s3Put.setHeader(SOURCE_MOD, _))
             s3Put.setContent(response.getContent)
-            s3Put.sign(s3key, s3secret, bucket)
+            s3Put.sign(bucket)
             s3Client(s3Put).onFailure(log.error(_, "error on  PUT %s to update S3 bucket %s", req.getUri, bucket))
           }
         }

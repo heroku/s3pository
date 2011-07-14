@@ -40,13 +40,13 @@ package object s3pository {
       req
     }
 
-    def sign(s3key: String, s3secret: String, bucket: String): DefaultHttpRequest = {
-      req.setHeader(AUTHORIZATION, authorization(s3key, s3secret, req, bucket))
+    def sign(bucket: String)(implicit s3key:S3Key, s3secret:S3Secret): DefaultHttpRequest = {
+      req.setHeader(AUTHORIZATION, authorization(s3key.key, s3secret.secret, req, bucket))
       req
     }
 
-    def s3headers(s3key: String, s3secret: String, bucket: String): DefaultHttpRequest = {
-      headers(Map(HOST -> bucketHost(bucket), DATE -> amzDate)).sign(s3key, s3secret, bucket)
+    def s3headers(bucket: String)(implicit s3key:S3Key, s3secret:S3Secret): DefaultHttpRequest = {
+      headers(Map(HOST -> bucketHost(bucket), DATE -> amzDate)).sign(bucket)
     }
 
     /*

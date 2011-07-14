@@ -1,5 +1,7 @@
 package com.heroku.maven.s3pository
 
+import com.heroku.maven.s3pository.S3rver._
+
 import java.util.concurrent.atomic.AtomicInteger
 import com.twitter.finagle.stats.SummarizingStatsReceiver
 import com.twitter.finagle.Service
@@ -10,7 +12,7 @@ import com.twitter.util.{Time, Future, MapMaker}
 import org.jboss.netty.handler.codec.http._
 import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
 import scala.xml._
-import util.{Random, Properties}
+import util.{Random}
 import java.io.{FileOutputStream, File}
 
 /**
@@ -28,15 +30,6 @@ object Stress {
     val concurrency = args(1).toInt
     val totalRequests = args(2).toInt
     val bucket = args(3)
-    val s3key: String = Properties.envOrNone("S3_KEY").getOrElse {
-      System.exit(666)
-      "noKey"
-    }
-
-    val s3secret: String = Properties.envOrNone("S3_SECRET").getOrElse {
-      System.exit(666)
-      "noSecret"
-    }
 
     val errors = new AtomicInteger(0)
     val responses = MapMaker[HttpResponseStatus, AtomicInteger] {
@@ -56,7 +49,7 @@ object Stress {
       .build()
 
 
-    val listRequest = get("/").s3headers(s3key, s3secret, bucket)
+    val listRequest = get("/").s3headers(bucket)
 
     //get the keys in the bucket
     val xResp = XML.loadString(listClient(listRequest).get().getContent.toString("UTF-8"))
