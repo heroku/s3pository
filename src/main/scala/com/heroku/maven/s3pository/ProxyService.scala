@@ -152,13 +152,20 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   /*do a parallel request to the group proxies, and return the first acceptale request */
   @Trace
   def groupParallelRequest(group: RepositoryGroup, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
-    val trackers:List[Future[(HttpResponse,Client)]] = group.repos.map {
+    val trackers: List[Future[(HttpResponse, Client)]] = group.repos.map {
       repo => {
         val client = clients.get(repo.prefix).get
         log.debug("parallel request for %s to %s", contentUri, repo.host)
         /*clone the request and send to the proxied repo that will timeout and return a 504 after 10 seconds*/
         singleRepoRequest(client, contentUri, cloneRequest(request)).within(timer, 10.seconds).handle {
-          case _: TimeoutException => timeout
+          case _: TimeoutException => {
+            log.warning("timeout in parallel req to %s for %s", client.repo.host, contentUri)
+            timeout
+          }
+          case _@ex => {
+            log.error(ex, "error in parallel req to %s for %s", client.repo.host, contentUri)
+            timeout
+          }
         }.map(resp => (resp, client))
       }
     }
@@ -175,15 +182,19 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     trackers.headOption match {
       case Some(_) => {
         val (first, rest) = Future.select(trackers).get()
-        val (response, client) = first.get()
-        if (response.getStatus.getCode == 200) {
-          /*got a good response, cache the repo that gave us this hit, cancel the rest of the requests, and return the response*/
-          log.debug("Parallel winner: %s for %s", client.repo.host, contentUri)
-          group.hits += (contentUri -> client.repo)
-          rest.foreach(_.cancel())
-          response
+        if (first.isReturn) {
+          val (response, client) = first.get()
+          if (response.getStatus.getCode == 200) {
+            /*got a good response, cache the repo that gave us this hit, cancel the rest of the requests, and return the response*/
+            log.debug("Parallel winner: %s for %s", client.repo.host, contentUri)
+            group.hits += (contentUri -> client.repo)
+            rest.foreach(_.cancel())
+            response
+          } else {
+            firstAcceptableResponse(rest)
+          }
         } else {
-          log.debug("")
+          log.warn("----------->Exception in parallel retrieve ",)
           firstAcceptableResponse(rest)
         }
       }
