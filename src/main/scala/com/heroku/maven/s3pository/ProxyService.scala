@@ -32,7 +32,7 @@ will respond to a request for
 by making requests to
     http://source.repo.com/path/to/repo/some/artifact.ext
 */
-class ProxyService(repositories: List[ProxiedRepository], groups: List[RepositoryGroup])(implicit s3key: S3Key, s3secret: S3Secret) extends Service[HttpRequest, HttpResponse] {
+class ProxyService(repositories: List[ProxiedRepository], groups: List[RepositoryGroup])(implicit s3key:S3Key, s3secret:S3Secret) extends Service[HttpRequest, HttpResponse] {
 
   import ProxyService._
 
@@ -64,7 +64,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   def primeHitCaches(group: RepositoryGroup) {
     group.repos.reverse.foreach {
       repo =>
-        log.debug("priming hit cache from %s", repo.bucket)
+        log.debug("priming hit cache from %s",repo.bucket)
         val keys = getKeys(clients.get(repo.prefix).get.s3Service.service, repo.bucket)
         keys.foreach(key => group.hits += (("/" + key) -> repo))
     }
@@ -152,14 +152,15 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   /*do a parallel request to the group proxies, and return the first acceptale request */
   @Trace
   def groupParallelRequest(group: RepositoryGroup, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
-    val trackers:List[Future[(HttpResponse,Client)]] = group.repos.map {
+    val trackers = group.repos.map {
       repo => {
         val client = clients.get(repo.prefix).get
         log.info("parallel request for %s to %s", contentUri, repo.host)
         /*clone the request and send to the proxied repo that will timeout and return a 504 after 10 seconds*/
-        singleRepoRequest(client, contentUri, cloneRequest(request)).within(timer, 10.seconds).handle {
+        val future = singleRepoRequest(client, contentUri, cloneRequest(request)).within(timer, 10.seconds) handle {
           case _: TimeoutException => timeout
-        }.map(resp => (resp, client))
+        }
+        HitTracker(client, future)
       }
     }
 
@@ -171,21 +172,27 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   return the fisrt acceptable response (200) from the list of requests.
   The list is ordered by the repositories precedence, so we block for the response on the head of the list
   */
-  def firstAcceptableResponse(trackers: Seq[Future[(HttpResponse, Client)]])(implicit group: RepositoryGroup, contentUri: String): HttpResponse = {
+  def firstAcceptableResponse(trackers: List[HitTracker])(implicit group: RepositoryGroup, contentUri: String): HttpResponse = {
     trackers.headOption match {
-      case Some(_) => {
-        val (first, rest) = Future.select(trackers).get()
-        val (response, client) = first.get()
+      case Some(tracker) => {
+        val response = {
+          try {
+            /*block for response*/
+            tracker.future.get()
+          } catch {
+            case _ => notFound
+          }
+        }
         if (response.getStatus.getCode == 200) {
           /*got a good response, cache the repo that gave us this hit, cancel the rest of the requests, and return the response*/
-          log.debug("Parallel winner: %s for %s", client.repo.host, contentUri)
-          group.hits += (contentUri -> client.repo)
-          rest.foreach(_.cancel())
+          group.hits += (contentUri -> tracker.client.repo)
+          trackers.tail.foreach(_.future.cancel())
           response
         } else {
-          firstAcceptableResponse(rest)
+          firstAcceptableResponse(trackers.tail)
         }
       }
+      /*List is empty, we have processed all responses and didnt get any good ones*/
       case None => notFound
     }
   }
@@ -347,7 +354,7 @@ object ProxyService {
   }
 
   /*get the keys in an s3bucket, s3 only returns up to 1000 at a time so this can be called recursively*/
-  def getKeys(client: Service[HttpRequest, HttpResponse], bucket: String, marker: Option[String] = None)(implicit s3key: S3Key, s3secret: S3Secret): List[String] = {
+  def getKeys(client: Service[HttpRequest, HttpResponse], bucket: String, marker: Option[String] = None)(implicit s3key:S3Key, s3secret:S3Secret): List[String] = {
     val listRequest = get("/").s3headers(bucket)
     marker.foreach(m => listRequest.query(Map("marker" -> m)))
     val listResp = client(listRequest).onFailure(log.error(_, "error getting keys for bucket %s marker %s", bucket, marker)).get()
@@ -384,9 +391,8 @@ case class RepositoryGroup(prefix: String, repos: List[ProxiedRepository]) {
 /*Holds a ProxiedRepository and the associated source and s3 client ServiceFactories*/
 case class Client(repoService: ServiceFactory[HttpRequest, HttpResponse], s3Service: ServiceFactory[HttpRequest, HttpResponse], repo: ProxiedRepository)
 
-case class S3Key(key: String)
-
-case class S3Secret(secret: String)
+case class S3Key(key:String)
+case class S3Secret(secret:String)
 
 
 
