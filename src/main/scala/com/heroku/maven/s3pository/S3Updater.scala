@@ -1,6 +1,7 @@
 package com.heroku.maven.s3pository
 
 import com.heroku.maven.s3pository.S3rver._
+import com.heroku.maven.s3pository.ProxyService._
 
 import com.twitter.logging.Logger
 import com.twitter.logging.config.{ConsoleHandlerConfig, LoggerConfig}
@@ -49,7 +50,7 @@ object S3Updater {
       proxy: ProxiedRepository => {
         val sourceClient = client(proxy)
 
-        val keys = getKeys(s3Client, proxy.bucket)
+        val keys = getKeys(s3Client, s3key, s3secret, proxy.bucket)
         stats.counter("bucket", proxy.bucket, "totalkeys").incr(keys.size)
         //do in batches of 100 to keep queue depths and memory consumption down
         if (args.size > 0) log.info("filtering keys with " + args.mkString(" | "))
@@ -151,24 +152,6 @@ object S3Updater {
     }
   }
 
-  /*get the keys in an s3bucket, s3 only returns up to 1000 at a time so this can be called recursively*/
-  def getKeys(client: Service[HttpRequest, HttpResponse], bucket: String, marker: Option[String] = None): List[String] = {
-    val listRequest = get("/").s3headers(s3key, s3secret, bucket)
-    marker.foreach(m => listRequest.query(Map("marker" -> m)))
-    val listResp = client(listRequest).onFailure(log.error(_, "error getting keys for bucket %s marker %s", bucket, marker)).get()
-    val respStr = listResp.getContent.toString("UTF-8")
-    log.debug(respStr)
-    val xResp = XML.loadString(respStr)
-
-    val keys = (xResp \\ "Contents" \\ "Key") map (_.text) toList
-    val truncated = ((xResp \ "IsTruncated") map (_.text.toBoolean))
-    log.warning("Got %s keys for %s", keys.size.toString, bucket)
-    if (truncated.head) {
-      keys ++ getKeys(client, bucket, Some(keys.last))
-    } else {
-      keys
-    }
-  }
 
   /*do a get for the updated content, delete the existing s3 item and pipeline the get to a put of the updated content*/
   def updateS3(sourceClient: Service[HttpRequest, HttpResponse], s3Client: Service[HttpRequest, HttpResponse], bucket: String, contentUri: String, req: DefaultHttpRequest): Future[HttpResponse] = {

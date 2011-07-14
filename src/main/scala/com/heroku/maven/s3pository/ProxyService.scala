@@ -19,6 +19,7 @@ import org.joda.time.DateTime
 import org.jboss.netty.buffer.{ChannelBuffers, ChannelBuffer}
 import org.jboss.netty.handler.codec.http._
 import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
+import xml.XML
 
 /*
 HTTP Service that acts as a caching proxy server for the configured ProxiedRepository(s) and RepositoryGroup(s).
@@ -50,9 +51,22 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   clients.values.foreach(createBucket(_))
   log.info("S3 Buckets verified")
 
+
   val repositoryGroups: HashMap[String, RepositoryGroup] = {
     groups.foldLeft(new HashMap[String, RepositoryGroup]) {
       (m, g) => m + (g.prefix -> g)
+    }
+  }
+
+  repositoryGroups.values.foreach(primeHitCaches(_))
+  log.info("Hit Cache populated")
+
+  def primeHitCaches(group: RepositoryGroup) {
+    group.repos.reverse.foreach {
+      repo =>
+        log.debug("priming hit cache from %s",repo.bucket)
+        val keys = getKeys(clients.get(repo.prefix).get.s3Service.service, s3key, s3Secret, repo.bucket)
+        keys.foreach(key => group.hits += (("/" + key) -> repo))
     }
   }
 
@@ -111,7 +125,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     group.hits.get(contentUri) match {
       /*group has a hit for the contentUri so go directly to the right proxy*/
       case Some(proxiedRepo) => {
-        log.info("%s cache hit on %s", contentUri, proxiedRepo.host)
+        log.info("Cache hit %s on %s", contentUri, proxiedRepo.host)
         singleRepoRequest(clients.get(proxiedRepo.prefix).get, contentUri, request)
       }
       /*group dosent have a hit, try and find the contentUri in one of the groups proxies*/
@@ -232,7 +246,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
 
   /*Asynchronously put content to S3*/
   def putS3(client: Client, contentUri: String, response: HttpResponse, content: ChannelBuffer) {
-    val s3Put = put(contentUri).headers(Map(CONTENT_LENGTH -> content.readableBytes.toString, DATE->amzDate,
+    val s3Put = put(contentUri).headers(Map(CONTENT_LENGTH -> content.readableBytes.toString, DATE -> amzDate,
       CONTENT_TYPE -> response.getHeader(CONTENT_TYPE), STORAGE_CLASS -> RRS, HOST -> bucketHost(client.repo.bucket)))
     s3Put.setContent(content)
     //seems slow and barfs in the log but eventually succeeds. Revisit.
@@ -337,6 +351,25 @@ object ProxyService {
       .name(host)
     if (ssl) (builder = builder.tlsWithoutValidation())
     builder.buildFactory()
+  }
+
+  /*get the keys in an s3bucket, s3 only returns up to 1000 at a time so this can be called recursively*/
+  def getKeys(client: Service[HttpRequest, HttpResponse], s3key: String, s3secret: String, bucket: String, marker: Option[String] = None): List[String] = {
+    val listRequest = get("/").s3headers(s3key, s3secret, bucket)
+    marker.foreach(m => listRequest.query(Map("marker" -> m)))
+    val listResp = client(listRequest).onFailure(log.error(_, "error getting keys for bucket %s marker %s", bucket, marker)).get()
+    val respStr = listResp.getContent.toString("UTF-8")
+    log.debug(respStr)
+    val xResp = XML.loadString(respStr)
+
+    val keys = (xResp \\ "Contents" \\ "Key") map (_.text) toList
+    val truncated = ((xResp \ "IsTruncated") map (_.text.toBoolean))
+    log.warning("Got %s keys for %s", keys.size.toString, bucket)
+    if (truncated.head) {
+      keys ++ getKeys(client, s3key, s3secret, bucket, Some(keys.last))
+    } else {
+      keys
+    }
   }
 
 
