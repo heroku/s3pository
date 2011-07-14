@@ -194,7 +194,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
             firstAcceptableResponse(rest)
           }
         } else {
-          log.warn("----------->Exception in parallel retrieve ",)
+          log.warning("Exception in parallel retrieve, skipping")
           firstAcceptableResponse(rest)
         }
       }
