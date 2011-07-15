@@ -5,7 +5,6 @@ import com.newrelic.api.agent.Trace
 import com.twitter.conversions.time._
 import com.twitter.logging.Logger
 import com.twitter.util._
-import com.twitter.util.Future.CancelledException
 import com.twitter.finagle.{ServiceFactory, Service}
 import com.twitter.finagle.http.Http
 import com.twitter.finagle.builder.ClientBuilder
@@ -23,6 +22,7 @@ import org.jboss.netty.handler.codec.http._
 import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
 
 import xml.XML
+import com.twitter.util.Future.CancelledException
 
 /*
 HTTP Service that acts as a caching proxy server for the configured ProxiedRepository(s) and RepositoryGroup(s).
@@ -216,7 +216,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   def singleRepoRequest(client: Client, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
     val s3request = get(contentUri).s3headers(client.repo.bucket)
     /*Check S3 cache first*/
-    client.s3Service.tryService(s3request,timeout, client.repo.host).handle {
+    client.s3Service.tryService(s3request,timeout, client.repo.bucket).handle {
       case ex@_ => {
         log.error(ex, "error checking s3 bucket %s for %s", client.repo.bucket, contentUri)
         timeout
@@ -369,7 +369,7 @@ object ProxyService {
       //.reportTo(NewRelicStatsReceiver)
       .name(host)
     if (ssl) (builder = builder.tlsWithoutValidation())
-    builder.buildFactory()
+    new FailureAccrualFactoryIgnoreCancelled(builder.buildFactory(), 2, 60.seconds)
   }
 
   /*get the keys in an s3bucket, s3 only returns up to 1000 at a time so this can be called recursively*/
@@ -394,6 +394,54 @@ object ProxyService {
 
 }
 
+
+
+class FailureAccrualFactoryIgnoreCancelled[Req, Rep](
+    underlying: ServiceFactory[Req, Rep],
+    numFailures: Int,
+    markDeadFor: Duration)
+  extends ServiceFactory[Req, Rep]
+{
+  private[this] var failureCount = 0
+  private[this] var failedAt = Time.epoch
+
+  private[this] def didFail() = synchronized {
+    failureCount += 1
+    if (failureCount >= numFailures)
+      failedAt = Time.now
+  }
+
+  private[this] def didSucceed() = synchronized {
+    failureCount = 0
+    failedAt = Time.epoch
+  }
+
+  def make() =
+    underlying.make() map { service =>
+      new Service[Req, Rep] {
+        def apply(request: Req) = {
+          val result = service(request)
+          result respond {
+            case Throw(c:CancelledException) => log.debug("Ignore Throw(CancelledException)")
+            case Throw(_)  => didFail()
+            case Return(_) => didSucceed()
+          }
+          result
+        }
+
+        override def release() = service.release()
+        override def isAvailable =
+          service.isAvailable && FailureAccrualFactoryIgnoreCancelled.this.isAvailable
+      }
+    } onFailure { _ => didFail() }
+
+  override def isAvailable =
+    underlying.isAvailable && synchronized { failedAt.untilNow >= markDeadFor }
+
+  override def close() = underlying.close()
+
+  override val toString = "failure_accrual_%s".format(underlying.toString)
+}
 
 case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String, port: Int = 80, ssl: Boolean = false) {
   if (prefix.substring(1).contains("/")) throw new IllegalArgumentException("Prefix %s for Host %s Should not contain the / character, except as its first character".format(prefix, host))
