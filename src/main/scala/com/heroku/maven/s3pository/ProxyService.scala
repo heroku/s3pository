@@ -153,7 +153,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   /*do a parallel request to the group proxies, and return the first acceptale request */
   @Trace
   def groupParallelRequest(group: RepositoryGroup, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
-    val trackers: List[Future[(HttpResponse, Client)]] = group.repos.map {
+    val requests: List[Future[(HttpResponse, Client)]] = group.repos.map {
       repo => {
         val client = clients.get(repo.prefix).get
         log.debug("parallel request for %s to %s", contentUri, repo.host)
@@ -174,7 +174,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       }
     }
 
-    Future.value(firstAcceptableResponse(trackers)(group, contentUri))
+    Future.value(firstAcceptableResponse(requests)(group, contentUri))
 
   }
 
@@ -182,10 +182,10 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   return the fisrt acceptable response (200) from the list of requests.
   The list is ordered by the repositories precedence, so we block for the response on the head of the list
   */
-  def firstAcceptableResponse(trackers: Seq[Future[(HttpResponse, Client)]])(implicit group: RepositoryGroup, contentUri: String): HttpResponse = {
-    trackers.headOption match {
+  def firstAcceptableResponse(requests: Seq[Future[(HttpResponse, Client)]])(implicit group: RepositoryGroup, contentUri: String): HttpResponse = {
+    requests.headOption match {
       case Some(_) => {
-        val (first, rest) = Future.select(trackers).get()
+        val (first, rest) = Future.select(requests).get()
         if (first.isReturn) {
           val (response, client) = first.get()
           if (response.getStatus.getCode == 200) {
@@ -398,8 +398,6 @@ object ProxyService {
 case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String, port: Int = 80, ssl: Boolean = false) {
   if (prefix.substring(1).contains("/")) throw new IllegalArgumentException("Prefix %s for Host %s Should not contain the / character, except as its first character".format(prefix, host))
 }
-
-case class HitTracker(client: Client, future: Future[HttpResponse])
 
 case class RepositoryGroup(prefix: String, repos: List[ProxiedRepository]) {
   if (prefix.substring(1).contains("/")) throw new IllegalArgumentException("Prefix %s for Group Should not contain the / character, except as its first character".format(prefix))
