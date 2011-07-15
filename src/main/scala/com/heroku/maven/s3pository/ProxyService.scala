@@ -216,12 +216,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   def singleRepoRequest(client: Client, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
     val s3request = get(contentUri).s3headers(client.repo.bucket)
     /*Check S3 cache first*/
-    client.s3Service.tryService(s3request,timeout, client.repo.bucket).handle {
-      case ex@_ => {
-        log.error(ex, "error checking s3 bucket %s for %s", client.repo.bucket, contentUri)
-        timeout
-      }
-    }.flatMap {
+    client.s3Service.tryService(s3request, timeout, client.repo.bucket)("error checking s3 bucket %s for %s", client.repo.bucket, contentUri).flatMap {
       s3response => {
         s3response.getStatus.getCode match {
           /*S3 has the content, return it*/
@@ -234,13 +229,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
             val uri = client.repo.hostPath + contentUri
             request.setUri(uri)
             request.setHeader(HOST, client.repo.host)
-            client.repoService.tryService(request, timeout, client.repo.host).handle {
-              case ex@_ => {
-                log.warning("error checking source repo %s for %s: %s", client.repo.host, contentUri, ex.getClass.getSimpleName)
-                log.debug(ex,"error checking source repo %s for %s: %s", client.repo.host, contentUri, ex.getClass.getSimpleName)
-                timeout
-              }
-            }.flatMap {
+            client.repoService.tryService(request, timeout, client.repo.host)("error checking source repo %s for %s: %s", client.repo.host, contentUri).flatMap {
               response => {
                 if (response.getStatus == HttpResponseStatus.OK && (request.getMethod equals HttpMethod.GET)) {
                   /*found the content in the source repo, do an async put of the content to S3*/

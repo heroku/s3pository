@@ -15,7 +15,6 @@ import org.jboss.netty.handler.codec.http._
 import com.twitter.finagle.ServiceFactory
 import com.twitter.util.Future
 import com.twitter.util.Future.CancelledException
-
 package object s3pository {
 
   lazy val log = Logger.get("s3pository")
@@ -65,7 +64,7 @@ package object s3pository {
       Option(req.getHeader(name))
     }
 
-    def ifHeader(name:String)(f: String=>Unit){
+    def ifHeader(name: String)(f: String => Unit) {
       req.header(name).foreach(f(_))
     }
 
@@ -79,7 +78,7 @@ package object s3pository {
       Option(resp.getHeader(name))
     }
 
-    def ifHeader(name:String)(f: String=>Unit){
+    def ifHeader(name: String)(f: String => Unit) {
       resp.header(name).foreach(f(_))
     }
 
@@ -88,12 +87,16 @@ package object s3pository {
   implicit def respToRichResp(resp: HttpResponse): RichHttpResponse = new RichHttpResponse(resp)
 
   class RichServiceFactory[Req, Res](val fact: ServiceFactory[Req, Res]) {
-    def tryService(req: Req, otherwise: Res, msg: String): Future[Res] = {
+    def tryService(req: Req, otherwise: Res, id: String)(msg: String, items: Any*): Future[Res] = {
       if (fact.isAvailable) fact.service(req).handle {
-        case _:CancelledException => otherwise
-      }
-      else {
-        log.warning("service factory for: %s ->unavailable due to failure accrual", msg)
+        case cex: CancelledException => otherwise
+        case ex@_ => {
+          log.error(id + " " + msg + ":" + ex.getClass.getSimpleName, items)
+          log.debug(ex, id + " " + msg, items)
+          otherwise
+        }
+      } else {
+        log.warning("service factory for: %s ->unavailable due to failure accrual", id)
         Future.value(otherwise)
       }
     }
