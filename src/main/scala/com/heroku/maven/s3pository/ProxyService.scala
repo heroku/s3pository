@@ -365,7 +365,7 @@ object ProxyService {
       .hostConnectionLimit(Integer.MAX_VALUE)
       .hostConnectionMaxIdleTime(5.seconds)
       .retries(1)
-      .failureAccrualParams(2, 60.seconds)
+      //.failureAccrualParams(2, 60.seconds)
       //.reportTo(NewRelicStatsReceiver)
       .name(host)
     if (ssl) (builder = builder.tlsWithoutValidation())

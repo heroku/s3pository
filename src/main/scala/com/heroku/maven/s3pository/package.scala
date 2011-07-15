@@ -14,6 +14,8 @@ import com.twitter.logging.Logger
 import org.jboss.netty.handler.codec.http._
 import com.twitter.finagle.ServiceFactory
 import com.twitter.util.Future
+import com.twitter.util.Future.CancelledException
+
 package object s3pository {
 
   lazy val log = Logger.get("s3pository")
@@ -87,7 +89,9 @@ package object s3pository {
 
   class RichServiceFactory[Req, Res](val fact: ServiceFactory[Req, Res]) {
     def tryService(req: Req, otherwise: Res, msg: String): Future[Res] = {
-      if (fact.isAvailable) fact.service(req)
+      if (fact.isAvailable) fact.service(req).handle {
+        case _:CancelledException => otherwise
+      }
       else {
         log.warning("service factory for: %s ->unavailable due to failure accrual", msg)
         Future.value(otherwise)
