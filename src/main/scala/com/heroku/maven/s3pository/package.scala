@@ -91,7 +91,7 @@ package object s3pository {
       if (fact.isAvailable) fact.service(req).handle {
         case cex: CancelledException => otherwise
         case ex@_ => {
-          log.error(id + " " + msg + ":" + ex.getClass.getSimpleName, items)
+          log.error(id + " " + msg + ":" + ex.getClass.getSimpleName, items: _*)
           log.debug(ex, id + " " + msg, items)
           otherwise
         }
