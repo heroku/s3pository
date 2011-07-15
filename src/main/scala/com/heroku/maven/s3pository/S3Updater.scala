@@ -154,7 +154,7 @@ object S3Updater {
 
 
   /*do a get for the updated content, delete the existing s3 item and pipeline the get to a put of the updated content*/
-  def updateS3(sourceClient: Service[HttpRequest, HttpResponse], s3Client: Service[HttpRequest, HttpResponse], bucket: String, contentUri: String, req: DefaultHttpRequest): Future[HttpResponse] = {
+  def updateS3(sourceClient: Service[HttpRequest, HttpResponse], s3Client: Service[HttpRequest, HttpResponse], bucket: String, contentUri: String, req: HttpRequest): Future[HttpResponse] = {
     req.setMethod(HttpMethod.GET)
     sourceClient(req).onFailure(log.error(_, "error on GET %s to update S3 bucket %s", req.getUri, bucket)).flatMap {
       response =>

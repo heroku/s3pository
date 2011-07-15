@@ -214,7 +214,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   */
   @Trace
   def singleRepoRequest(client: Client, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
-    val s3request: DefaultHttpRequest = get(contentUri).headers(Map(HOST -> bucketHost(client.repo.bucket), DATE -> amzDate)).sign(client.repo.bucket)
+    val s3request = get(contentUri).s3headers(client.repo.bucket)
     /*Check S3 cache first*/
     client.s3Service.tryService(s3request,timeout, client.repo.host).handle {
       case ex@_ => {
@@ -269,10 +269,8 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     val s3Put = put(contentUri).headers(Map(CONTENT_LENGTH -> content.readableBytes.toString, DATE -> amzDate,
       CONTENT_TYPE -> response.getHeader(CONTENT_TYPE), STORAGE_CLASS -> RRS, HOST -> bucketHost(client.repo.bucket)))
     s3Put.setContent(content)
-    //seems slow and barfs in the log but eventually succeeds. Revisit.
-    //s3Put.setHeader("Expect","100-continue")
-    Option(response.getHeader(ETAG)).foreach(s3Put.setHeader(SOURCE_ETAG, _))
-    Option(response.getHeader(LAST_MODIFIED)).foreach(s3Put.setHeader(SOURCE_MOD, _))
+    response.ifHeader(ETAG)(s3Put.setHeader(SOURCE_ETAG, _))
+    response.ifHeader(LAST_MODIFIED)(s3Put.setHeader(SOURCE_MOD, _))
     s3Put.sign(client.repo.bucket)
     client.s3Service.service {
       s3Put

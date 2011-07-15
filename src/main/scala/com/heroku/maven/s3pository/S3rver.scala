@@ -19,7 +19,7 @@ object S3rver {
     ProxiedRepository("/spring-releases",       "maven.springframework.org",              "/release",                             "sclasen-proxy-spring-releases"),
     ProxiedRepository("/spring-milestones",     "maven.springframework.org",              "/milestone",                           "sclasen-proxy-spring-milestones"),
     ProxiedRepository("/spring-milestones",     "spring-roo-repository.springsource.org", "/release",                             "sclasen-proxy-spring-roo"),
-    //ProxiedRepository("/jboss",                 "repository.jboss.org",                   "/nexus/content/repositories/releases", "sclasen-proxy-jboss", 443, true),
+    ProxiedRepository("/jboss",                 "repository.jboss.org",                   "/nexus/content/repositories/releases", "sclasen-proxy-jboss", 443, true),
     ProxiedRepository("/force-releases",        "repo.t.salesforce.com",                  "/archiva/repository/releases",         "sclasen-proxy-force-releases"),
     ProxiedRepository("/force-milestones",      "repo.t.salesforce.com",                  "/archiva/repository/snapshots",        "sclasen-proxy-force-snapshots"),
     ProxiedRepository("/datanucleus",           "www.datanucleus.org",                    "/downloads/maven2",                    "sclasen-proxy-datanucleus"),
