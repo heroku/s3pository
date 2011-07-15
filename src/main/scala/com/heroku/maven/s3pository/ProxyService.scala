@@ -5,6 +5,7 @@ import com.newrelic.api.agent.Trace
 import com.twitter.conversions.time._
 import com.twitter.logging.Logger
 import com.twitter.util._
+import com.twitter.util.Future.CancelledException
 import com.twitter.finagle.{ServiceFactory, Service}
 import com.twitter.finagle.http.Http
 import com.twitter.finagle.builder.ClientBuilder
@@ -15,12 +16,13 @@ import collection.JavaConversions._
 
 import java.lang.IllegalArgumentException
 import java.net.InetSocketAddress
+
 import org.joda.time.DateTime
 import org.jboss.netty.buffer.{ChannelBuffers, ChannelBuffer}
 import org.jboss.netty.handler.codec.http._
 import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
+
 import xml.XML
-import com.twitter.util.Future.CancelledException
 
 /*
 HTTP Service that acts as a caching proxy server for the configured ProxiedRepository(s) and RepositoryGroup(s).
@@ -66,8 +68,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     group.repos.reverse.foreach {
       repo =>
         log.debug("priming hit cache from %s", repo.bucket)
-        val keys = getKeys(clients.get(repo.prefix).get.s3Service.service, repo.bucket)
-        keys.foreach(key => group.hits += (("/" + key) -> repo))
+        getKeys(clients.get(repo.prefix).get.s3Service.service, repo.bucket).foreach(key => group.hits += (("/" + key) -> repo))
     }
   }
 
@@ -180,7 +181,6 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
 
   /*
   return the fisrt acceptable response (200) from the list of requests.
-  The list is ordered by the repositories precedence, so we block for the response on the head of the list
   */
   def firstAcceptableResponse(requests: Seq[Future[(HttpResponse, Client)]])(implicit group: RepositoryGroup, contentUri: String): HttpResponse = {
     requests.headOption match {
