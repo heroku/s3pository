@@ -229,7 +229,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
             val uri = client.repo.hostPath + contentUri
             request.setUri(uri)
             request.setHeader(HOST, client.repo.host)
-            client.repoService.tryService(request, timeout, client.repo.host)("error checking source repo %s for %s: %s", client.repo.host, contentUri).flatMap {
+            client.repoService.tryService(request, timeout, client.repo.host)("error checking source repo %s for % ", client.repo.host, contentUri).flatMap {
               response => {
                 if (response.getStatus == HttpResponseStatus.OK && (request.getMethod equals HttpMethod.GET)) {
                   /*found the content in the source repo, do an async put of the content to S3*/
