@@ -47,7 +47,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   val clients: HashMap[String, Client] = {
     repositories.foldLeft(new HashMap[String, Client]) {
       (m, repo) => {
-        m + (repo.prefix -> Client(clientService(repo.host, repo.port, repo.ssl), clientService(repo.bucket + ".s3.amazonaws.com", 80, false), repo))
+        m + (repo.prefix -> Client(clientService(repo.host, repo.port, repo.ssl, "source of:" + repo.bucket), clientService(repo.bucket + ".s3.amazonaws.com", 80, false, "s3 client for:"+repo.bucket), repo))
       }
     }
   }
@@ -345,7 +345,7 @@ object ProxyService {
   }
 
   /*Build a Client ServiceFactory for the given endpoint*/
-  def clientService(host: String, port: Int, ssl: Boolean): ServiceFactory[HttpRequest, HttpResponse] = {
+  def clientService(host: String, port: Int, ssl: Boolean, name:String): ServiceFactory[HttpRequest, HttpResponse] = {
     import com.twitter.conversions.storage._
     var builder = ClientBuilder()
       .codec(Http(_maxRequestSize = 100.megabytes, _maxResponseSize = 100.megabyte))
@@ -357,7 +357,7 @@ object ProxyService {
       .retries(1)
       //.failureAccrualParams(2, 60.seconds)
       //.reportTo(NewRelicStatsReceiver)
-      .name(host)
+      .name(name)
     if (ssl) (builder = builder.tlsWithoutValidation())
     new FailureAccrualFactoryIgnoreCancelled(builder.buildFactory(), 10, 240.seconds)
   }
