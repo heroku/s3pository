@@ -23,6 +23,7 @@ import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
 
 import xml.XML
 import com.twitter.util.Future.CancelledException
+import annotation.implicitNotFound
 
 /*
 HTTP Service that acts as a caching proxy server for the configured ProxiedRepository(s) and RepositoryGroup(s).
@@ -412,7 +413,10 @@ class FailureAccrualFactoryIgnoreCancelled[Req, Rep](
           val result = service(request)
           result respond {
             case Throw(c:CancelledException) => log.debug("Ignore Throw(CancelledException)")
-            case Throw(_)  => didFail()
+            case Throw(x:Exception)  => {
+              log.warn("accruing failure for %s",x.getClass.getSimpleName)
+              didFail()
+            }
             case Return(_) => didSucceed()
           }
           result
@@ -445,8 +449,10 @@ case class RepositoryGroup(prefix: String, repos: List[ProxiedRepository]) {
 /*Holds a ProxiedRepository and the associated source and s3 client ServiceFactories*/
 case class Client(repoService: ServiceFactory[HttpRequest, HttpResponse], s3Service: ServiceFactory[HttpRequest, HttpResponse], repo: ProxiedRepository)
 
+@implicitNotFound(msg = "cannot find implicit S3Key in scope")
 case class S3Key(key: String)
 
+@implicitNotFound(msg = "cannot find implicit S3Secret in scope")
 case class S3Secret(secret: String)
 
 
