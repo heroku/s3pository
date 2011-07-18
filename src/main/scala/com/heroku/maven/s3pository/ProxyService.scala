@@ -414,7 +414,7 @@ class FailureAccrualFactoryIgnoreCancelled[Req, Rep](
           result respond {
             case Throw(c:CancelledException) => log.debug("Ignore Throw(CancelledException)")
             case Throw(x:Exception)  => {
-              log.warn("accruing failure for %s",x.getClass.getSimpleName)
+              log.warning("accruing failure for %s",x.getClass.getSimpleName)
               didFail()
             }
             case Return(_) => didSucceed()
