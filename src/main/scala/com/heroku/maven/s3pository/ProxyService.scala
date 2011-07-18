@@ -5,7 +5,6 @@ import com.newrelic.api.agent.Trace
 import com.twitter.conversions.time._
 import com.twitter.logging.Logger
 import com.twitter.util._
-import com.twitter.finagle.{ServiceFactory, Service}
 import com.twitter.finagle.http.Http
 import com.twitter.finagle.builder.ClientBuilder
 
@@ -24,6 +23,7 @@ import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
 import xml.XML
 import com.twitter.util.Future.CancelledException
 import annotation.implicitNotFound
+import com.twitter.finagle.{TooManyConcurrentRequestsException, ServiceFactory, Service}
 
 /*
 HTTP Service that acts as a caching proxy server for the configured ProxiedRepository(s) and RepositoryGroup(s).
@@ -413,6 +413,7 @@ class FailureAccrualFactoryIgnoreCancelled[Req, Rep](
           val result = service(request)
           result respond {
             case Throw(c:CancelledException) => log.debug("Ignore Throw(CancelledException)")
+            case Throw(t:TooManyConcurrentRequestsException) => log.debug("Ignore Throw(TooManyConcurrentRequestsException)")
             case Throw(x:Exception)  => {
               log.warning("accruing failure for %s",x.getClass.getSimpleName)
               didFail()
