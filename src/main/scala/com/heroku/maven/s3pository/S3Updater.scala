@@ -1,6 +1,7 @@
 package com.heroku.maven.s3pository
 
 import com.heroku.maven.s3pository.S3rver._
+import com.heroku.maven.s3pository.ProxyService._
 
 import com.twitter.logging.Logger
 import com.twitter.logging.config.{ConsoleHandlerConfig, LoggerConfig}
@@ -86,7 +87,7 @@ object S3Updater {
     val futures: Seq[Future[HttpResponse]] = keys map {
       key => {
         /*get the orig last modified and or etag from s3, either or both can be null*/
-        val metaReq = head("/" + key).s3headers(s3key, s3secret, proxy.bucket)
+        val metaReq = head("/" + key).s3headers(proxy.bucket)
         log.debug("checking %s for %s", proxy.bucket, key)
         val future = s3Client(metaReq).onFailure(log.error(_, "error getting s3 metadata for %s in %s", key, proxy.bucket))
         future flatMap {
@@ -151,31 +152,13 @@ object S3Updater {
     }
   }
 
-  /*get the keys in an s3bucket, s3 only returns up to 1000 at a time so this can be called recursively*/
-  def getKeys(client: Service[HttpRequest, HttpResponse], bucket: String, marker: Option[String] = None): List[String] = {
-    val listRequest = get("/").s3headers(s3key, s3secret, bucket)
-    marker.foreach(m => listRequest.query(Map("marker" -> m)))
-    val listResp = client(listRequest).onFailure(log.error(_, "error getting keys for bucket %s marker %s", bucket, marker)).get()
-    val respStr = listResp.getContent.toString("UTF-8")
-    log.debug(respStr)
-    val xResp = XML.loadString(respStr)
-
-    val keys = (xResp \\ "Contents" \\ "Key") map (_.text) toList
-    val truncated = ((xResp \ "IsTruncated") map (_.text.toBoolean))
-    log.warning("Got %s keys for %s", keys.size.toString, bucket)
-    if (truncated.head) {
-      keys ++ getKeys(client, bucket, Some(keys.last))
-    } else {
-      keys
-    }
-  }
 
   /*do a get for the updated content, delete the existing s3 item and pipeline the get to a put of the updated content*/
-  def updateS3(sourceClient: Service[HttpRequest, HttpResponse], s3Client: Service[HttpRequest, HttpResponse], bucket: String, contentUri: String, req: DefaultHttpRequest): Future[HttpResponse] = {
+  def updateS3(sourceClient: Service[HttpRequest, HttpResponse], s3Client: Service[HttpRequest, HttpResponse], bucket: String, contentUri: String, req: HttpRequest): Future[HttpResponse] = {
     req.setMethod(HttpMethod.GET)
     sourceClient(req).onFailure(log.error(_, "error on GET %s to update S3 bucket %s", req.getUri, bucket)).flatMap {
       response =>
-        val s3del = delete(contentUri).s3headers(s3key, s3secret, bucket)
+        val s3del = delete(contentUri).s3headers(bucket)
         s3Client(s3del).onFailure(log.error(_, "error on DEL %s to update S3 bucket %s", s3del.getUri, bucket)).flatMap {
           delResp => {
             val s3Put = put(contentUri).headers(Map(CONTENT_LENGTH -> response.getContent.readableBytes.toString,
@@ -186,7 +169,7 @@ object S3Updater {
             Option(response.getHeader(ETAG)).foreach(s3Put.setHeader(SOURCE_ETAG, _))
             Option(response.getHeader(LAST_MODIFIED)).foreach(s3Put.setHeader(SOURCE_MOD, _))
             s3Put.setContent(response.getContent)
-            s3Put.sign(s3key, s3secret, bucket)
+            s3Put.sign(bucket)
             s3Client(s3Put).onFailure(log.error(_, "error on  PUT %s to update S3 bucket %s", req.getUri, bucket))
           }
         }

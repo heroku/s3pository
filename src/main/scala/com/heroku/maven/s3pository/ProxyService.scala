@@ -15,10 +15,14 @@ import collection.JavaConversions._
 
 import java.lang.IllegalArgumentException
 import java.net.InetSocketAddress
+
 import org.joda.time.DateTime
 import org.jboss.netty.buffer.{ChannelBuffers, ChannelBuffer}
 import org.jboss.netty.handler.codec.http._
 import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
+
+import xml.XML
+import com.twitter.util.Future.CancelledException
 
 /*
 HTTP Service that acts as a caching proxy server for the configured ProxiedRepository(s) and RepositoryGroup(s).
@@ -31,7 +35,7 @@ will respond to a request for
 by making requests to
     http://source.repo.com/path/to/repo/some/artifact.ext
 */
-class ProxyService(repositories: List[ProxiedRepository], groups: List[RepositoryGroup], s3key: String, s3Secret: String) extends Service[HttpRequest, HttpResponse] {
+class ProxyService(repositories: List[ProxiedRepository], groups: List[RepositoryGroup])(implicit s3key: S3Key, s3secret: S3Secret) extends Service[HttpRequest, HttpResponse] {
 
   import ProxyService._
 
@@ -48,7 +52,8 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   }
   /*create/verify all S3 buckets at creation time*/
   clients.values.foreach(createBucket(_))
-  log.info("S3 Buckets verified")
+  log.warning("S3 Buckets verified")
+
 
   val repositoryGroups: HashMap[String, RepositoryGroup] = {
     groups.foldLeft(new HashMap[String, RepositoryGroup]) {
@@ -56,11 +61,22 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     }
   }
 
+  repositoryGroups.values.foreach(primeHitCaches(_))
+  log.warning("Hit Cache populated")
+
+  def primeHitCaches(group: RepositoryGroup) {
+    group.repos.reverse.foreach {
+      repo =>
+        log.debug("priming hit cache from %s", repo.bucket)
+        getKeys(clients.get(repo.prefix).get.s3Service.service, repo.bucket).foreach(key => group.hits += (("/" + key) -> repo))
+    }
+  }
+
 
   /*Create any missing S3 buckets. Create bucket is idempotent, and returns a 200 if the bucket exists or is created*/
   def createBucket(client: Client) {
     log.debug("creating bucket: %s".format(client.repo.bucket))
-    val s3request = put("/").headers(Map(HOST -> bucketHost(client.repo.bucket), DATE -> amzDate, CONTENT_LENGTH -> "0")).sign(s3key, s3Secret, client.repo.bucket)
+    val s3request = put("/").headers(Map(HOST -> bucketHost(client.repo.bucket), DATE -> amzDate, CONTENT_LENGTH -> "0")).sign(client.repo.bucket)
     client.s3Service.service(s3request) onSuccess {
       response =>
         if (response.getStatus.getCode != 200) {
@@ -111,7 +127,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     group.hits.get(contentUri) match {
       /*group has a hit for the contentUri so go directly to the right proxy*/
       case Some(proxiedRepo) => {
-        log.info("%s cache hit on %s", contentUri, proxiedRepo.host)
+        log.info("Cache hit %s on %s", contentUri, proxiedRepo.host)
         singleRepoRequest(clients.get(proxiedRepo.prefix).get, contentUri, request)
       }
       /*group dosent have a hit, try and find the contentUri in one of the groups proxies*/
@@ -138,50 +154,54 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   /*do a parallel request to the group proxies, and return the first acceptale request */
   @Trace
   def groupParallelRequest(group: RepositoryGroup, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
-    val trackers = group.repos.map {
+    val requests: List[Future[(HttpResponse, Client)]] = group.repos.map {
       repo => {
         val client = clients.get(repo.prefix).get
-        log.info("parallel request for %s to %s", contentUri, repo.host)
-        /*clone the request and send to the proxied repo that will timeout and return a 504 after 10 seconds*/
-        val future = singleRepoRequest(client, contentUri, cloneRequest(request)).within(timer, 10.seconds) handle {
+        log.debug("parallel request for %s to %s", contentUri, repo.host)
+        /*clone the request and send to the proxied repo that will timeout and return a 504 after 6 seconds*/
+        singleRepoRequest(client, contentUri, cloneRequest(request)).within(timer, 6.seconds).handle {
           case _: TimeoutException => {
-            log.warning("request for % to %s timed out", contentUri, repo.hostPath)
+            log.warning("timeout in parallel req to %s for %s", client.repo.host, contentUri)
             timeout
           }
-        }
-        HitTracker(client, future)
+          case _: CancelledException => {
+            timeout
+          }
+          case _@ex => {
+            log.error(ex, "error in parallel req to %s for %s", client.repo.host, contentUri)
+            timeout
+          }
+        }.map(resp => (resp, client))
       }
     }
 
-    Future.value(firstAcceptableResponse(trackers)(group, contentUri))
+    Future.value(firstAcceptableResponse(requests)(group, contentUri))
 
   }
 
   /*
   return the fisrt acceptable response (200) from the list of requests.
-  The list is ordered by the repositories precedence, so we block for the response on the head of the list
   */
-  def firstAcceptableResponse(trackers: List[HitTracker])(implicit group: RepositoryGroup, contentUri: String): HttpResponse = {
-    trackers.headOption match {
-      case Some(tracker) => {
-        val response = {
-          try {
-            /*block for response*/
-            tracker.future.get()
-          } catch {
-            case _ => notFound
+  def firstAcceptableResponse(requests: Seq[Future[(HttpResponse, Client)]])(implicit group: RepositoryGroup, contentUri: String): HttpResponse = {
+    requests.headOption match {
+      case Some(_) => {
+        val (first, rest) = Future.select(requests).get()
+        if (first.isReturn) {
+          val (response, client) = first.get()
+          if (response.getStatus.getCode == 200) {
+            /*got a good response, cache the repo that gave us this hit, cancel the rest of the requests, and return the response*/
+            log.debug("Parallel winner: %s for %s", client.repo.host, contentUri)
+            group.hits += (contentUri -> client.repo)
+            rest.foreach(_.cancel())
+            response
+          } else {
+            firstAcceptableResponse(rest)
           }
-        }
-        if (response.getStatus.getCode == 200) {
-          /*got a good response, cache the repo that gave us this hit, cancel the rest of the requests, and return the response*/
-          group.hits += (contentUri -> tracker.client.repo)
-          trackers.tail.foreach(_.future.cancel())
-          response
         } else {
-          firstAcceptableResponse(trackers.tail)
+          log.warning("Exception in parallel retrieve, skipping")
+          firstAcceptableResponse(rest)
         }
       }
-      /*List is empty, we have processed all responses and didnt get any good ones*/
       case None => notFound
     }
   }
@@ -194,9 +214,9 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   */
   @Trace
   def singleRepoRequest(client: Client, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
-    val s3request: DefaultHttpRequest = get(contentUri).headers(Map(HOST -> bucketHost(client.repo.bucket), DATE -> amzDate)).sign(s3key, s3Secret, client.repo.bucket)
+    val s3request = get(contentUri).s3headers(client.repo.bucket)
     /*Check S3 cache first*/
-    client.s3Service.service(s3request).flatMap {
+    client.s3Service.tryService(s3request, timeout, client.repo.bucket)("error checking s3 bucket %s for %s ", client.repo.bucket, contentUri).flatMap {
       s3response => {
         s3response.getStatus.getCode match {
           /*S3 has the content, return it*/
@@ -209,7 +229,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
             val uri = client.repo.hostPath + contentUri
             request.setUri(uri)
             request.setHeader(HOST, client.repo.host)
-            client.repoService.service(request).flatMap {
+            client.repoService.tryService(request, timeout, client.repo.host)("error checking source repo %s for %s ", client.repo.host, contentUri).flatMap {
               response => {
                 if (response.getStatus == HttpResponseStatus.OK && (request.getMethod equals HttpMethod.GET)) {
                   /*found the content in the source repo, do an async put of the content to S3*/
@@ -235,14 +255,12 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
 
   /*Asynchronously put content to S3*/
   def putS3(client: Client, contentUri: String, response: HttpResponse, content: ChannelBuffer) {
-    val s3Put = put(contentUri).headers(Map(CONTENT_LENGTH -> content.readableBytes.toString, DATE->amzDate,
+    val s3Put = put(contentUri).headers(Map(CONTENT_LENGTH -> content.readableBytes.toString, DATE -> amzDate,
       CONTENT_TYPE -> response.getHeader(CONTENT_TYPE), STORAGE_CLASS -> RRS, HOST -> bucketHost(client.repo.bucket)))
     s3Put.setContent(content)
-    //seems slow and barfs in the log but eventually succeeds. Revisit.
-    //s3Put.setHeader("Expect","100-continue")
-    Option(response.getHeader(ETAG)).foreach(s3Put.setHeader(SOURCE_ETAG, _))
-    Option(response.getHeader(LAST_MODIFIED)).foreach(s3Put.setHeader(SOURCE_MOD, _))
-    s3Put.sign(s3key, s3Secret, client.repo.bucket)
+    response.ifHeader(ETAG)(s3Put.setHeader(SOURCE_ETAG, _))
+    response.ifHeader(LAST_MODIFIED)(s3Put.setHeader(SOURCE_MOD, _))
+    s3Put.sign(client.repo.bucket)
     client.s3Service.service {
       s3Put
     } onSuccess {
@@ -336,21 +354,87 @@ object ProxyService {
       .hostConnectionLimit(Integer.MAX_VALUE)
       .hostConnectionMaxIdleTime(5.seconds)
       .retries(1)
+      //.failureAccrualParams(2, 60.seconds)
       //.reportTo(NewRelicStatsReceiver)
       .name(host)
     if (ssl) (builder = builder.tlsWithoutValidation())
-    builder.buildFactory()
+    new FailureAccrualFactoryIgnoreCancelled(builder.buildFactory(), 2, 60.seconds)
+  }
+
+  /*get the keys in an s3bucket, s3 only returns up to 1000 at a time so this can be called recursively*/
+  def getKeys(client: Service[HttpRequest, HttpResponse], bucket: String, marker: Option[String] = None)(implicit s3key: S3Key, s3secret: S3Secret): List[String] = {
+    val listRequest = get("/").s3headers(bucket)
+    marker.foreach(m => listRequest.query(Map("marker" -> m)))
+    val listResp = client(listRequest).onFailure(log.error(_, "error getting keys for bucket %s marker %s", bucket, marker)).get()
+    val respStr = listResp.getContent.toString("UTF-8")
+    log.debug(respStr)
+    val xResp = XML.loadString(respStr)
+
+    val keys = (xResp \\ "Contents" \\ "Key") map (_.text) toList
+    val truncated = ((xResp \ "IsTruncated") map (_.text.toBoolean))
+    log.info("Got %s keys for %s", keys.size.toString, bucket)
+    if (truncated.head) {
+      keys ++ getKeys(client, bucket, Some(keys.last))
+    } else {
+      keys
+    }
   }
 
 
 }
 
 
+
+class FailureAccrualFactoryIgnoreCancelled[Req, Rep](
+    underlying: ServiceFactory[Req, Rep],
+    numFailures: Int,
+    markDeadFor: Duration)
+  extends ServiceFactory[Req, Rep]
+{
+  private[this] var failureCount = 0
+  private[this] var failedAt = Time.epoch
+
+  private[this] def didFail() = synchronized {
+    failureCount += 1
+    if (failureCount >= numFailures)
+      failedAt = Time.now
+  }
+
+  private[this] def didSucceed() = synchronized {
+    failureCount = 0
+    failedAt = Time.epoch
+  }
+
+  def make() =
+    underlying.make() map { service =>
+      new Service[Req, Rep] {
+        def apply(request: Req) = {
+          val result = service(request)
+          result respond {
+            case Throw(c:CancelledException) => log.debug("Ignore Throw(CancelledException)")
+            case Throw(_)  => didFail()
+            case Return(_) => didSucceed()
+          }
+          result
+        }
+
+        override def release() = service.release()
+        override def isAvailable =
+          service.isAvailable && FailureAccrualFactoryIgnoreCancelled.this.isAvailable
+      }
+    } onFailure { _ => didFail() }
+
+  override def isAvailable =
+    underlying.isAvailable && synchronized { failedAt.untilNow >= markDeadFor }
+
+  override def close() = underlying.close()
+
+  override val toString = "failure_accrual_%s".format(underlying.toString)
+}
+
 case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String, port: Int = 80, ssl: Boolean = false) {
   if (prefix.substring(1).contains("/")) throw new IllegalArgumentException("Prefix %s for Host %s Should not contain the / character, except as its first character".format(prefix, host))
 }
-
-case class HitTracker(client: Client, future: Future[HttpResponse])
 
 case class RepositoryGroup(prefix: String, repos: List[ProxiedRepository]) {
   if (prefix.substring(1).contains("/")) throw new IllegalArgumentException("Prefix %s for Group Should not contain the / character, except as its first character".format(prefix))
@@ -361,6 +445,9 @@ case class RepositoryGroup(prefix: String, repos: List[ProxiedRepository]) {
 /*Holds a ProxiedRepository and the associated source and s3 client ServiceFactories*/
 case class Client(repoService: ServiceFactory[HttpRequest, HttpResponse], s3Service: ServiceFactory[HttpRequest, HttpResponse], repo: ProxiedRepository)
 
+case class S3Key(key: String)
+
+case class S3Secret(secret: String)
 
 
 

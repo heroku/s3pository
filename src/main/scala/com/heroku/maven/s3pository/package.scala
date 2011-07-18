@@ -12,13 +12,15 @@ import org.joda.time.{DateTimeZone, DateTime}
 
 import com.twitter.logging.Logger
 import org.jboss.netty.handler.codec.http._
-
+import com.twitter.finagle.ServiceFactory
+import com.twitter.util.Future
+import com.twitter.util.Future.CancelledException
 package object s3pository {
 
   lazy val log = Logger.get("s3pository")
 
   /*DateTime format required by AWS*/
-  lazy val format = DateTimeFormat.forPattern("EEE, dd MMM yyyy HH:mm:ss z").withLocale(java.util.Locale.US).withZone(DateTimeZone.forOffsetHours(0))
+  lazy val amzFormat = DateTimeFormat.forPattern("EEE, dd MMM yyyy HH:mm:ss z").withLocale(java.util.Locale.US).withZone(DateTimeZone.forOffsetHours(0))
 
   /*headers used by this app that need to be used in signing*/
   val SOURCE_ETAG = "x-amz-meta-source-etag"
@@ -33,35 +35,76 @@ package object s3pository {
   val ALGORITHM = "HmacSHA1"
 
   /*HttpRequest pimp*/
-  class RichHttpRequest(val req: DefaultHttpRequest) {
+  class RichHttpRequest(val req: HttpRequest) {
 
-    def headers(headers: Map[String, String]): DefaultHttpRequest = {
+    def headers(headers: Map[String, String]): HttpRequest = {
       headers.foreach(h => req.setHeader(h._1, h._2))
       req
     }
 
-    def sign(s3key: String, s3secret: String, bucket: String): DefaultHttpRequest = {
-      req.setHeader(AUTHORIZATION, authorization(s3key, s3secret, req, bucket))
+    def sign(bucket: String)(implicit s3key: S3Key, s3secret: S3Secret): HttpRequest = {
+      req.setHeader(AUTHORIZATION, authorization(s3key.key, s3secret.secret, req, bucket))
       req
     }
 
-    def s3headers(s3key: String, s3secret: String, bucket: String): DefaultHttpRequest = {
-      headers(Map(HOST -> bucketHost(bucket), DATE -> amzDate)).sign(s3key, s3secret, bucket)
+    def s3headers(bucket: String)(implicit s3key: S3Key, s3secret: S3Secret): HttpRequest = {
+      headers(Map(HOST -> bucketHost(bucket), DATE -> amzDate)).sign(bucket)
     }
 
     /*
     use query after calling sign so that the query is not used in the signing process
     todo phantom types to enforce
     */
-    def query(query: Map[String, String]): DefaultHttpRequest = {
+    def query(query: Map[String, String]): HttpRequest = {
       req.setUri(req.getUri + "?" + query.map(qp => (qp._1 + "=" + qp._2)).reduceLeft(_ + "&" + _))
       req
     }
 
+    def header(name: String): Option[String] = {
+      Option(req.getHeader(name))
+    }
+
+    def ifHeader(name: String)(f: String => Unit) {
+      req.header(name).foreach(f(_))
+    }
+
   }
 
+  implicit def reqToRichReq(req: HttpRequest): RichHttpRequest = new RichHttpRequest(req)
 
-  implicit def reqToRichReq(req: DefaultHttpRequest): RichHttpRequest = new RichHttpRequest(req)
+  class RichHttpResponse(val resp: HttpResponse) {
+
+    def header(name: String): Option[String] = {
+      Option(resp.getHeader(name))
+    }
+
+    def ifHeader(name: String)(f: String => Unit) {
+      resp.header(name).foreach(f(_))
+    }
+
+  }
+
+  implicit def respToRichResp(resp: HttpResponse): RichHttpResponse = new RichHttpResponse(resp)
+
+  class RichServiceFactory[Req, Res](val fact: ServiceFactory[Req, Res]) {
+    def tryService(req: Req, otherwise: Res, id: String)(msg: String, items: Any*): Future[Res] = {
+      if (fact.isAvailable) fact.service(req).handle {
+        case cex: CancelledException => otherwise
+        case ex@_ => {
+          log.error(id + " " + msg + ":" + ex.getClass.getSimpleName, items: _*)
+          log.debug(ex, id + " " + msg, items)
+          otherwise
+        }
+      } else {
+        log.warning("service factory for: %s ->unavailable due to failure accrual", id)
+        Future.value(otherwise)
+      }
+    }
+
+  }
+
+  implicit def factToRichFact[Req, Res](fact: ServiceFactory[Req, Res]): RichServiceFactory[Req, Res] = new RichServiceFactory[Req, Res](fact)
+
 
   /*req creation sugar*/
   def get(uri: String) = new DefaultHttpRequest(HTTP_1_1, GET, uri)
@@ -77,15 +120,15 @@ package object s3pository {
   /*header utils*/
   def bucketHost(bucket: String) = bucket + ".s3.amazonaws.com"
 
-  def amzDate: String = format.print(new DateTime)
+  def amzDate: String = amzFormat.print(new DateTime)
 
   /*request signing for amazon*/
   /*Create the Authorization payload and sign it with the AWS secret*/
   def sign(secret: String, request: HttpRequest, bucket: String): String = {
     val data = List(
       request.getMethod.getName,
-      Option(request.getHeader(CONTENT_MD5)).getOrElse(""),
-      Option(request.getHeader(CONTENT_TYPE)).getOrElse(""),
+      request.header(CONTENT_MD5).getOrElse(""),
+      request.header(CONTENT_TYPE).getOrElse(""),
       request.getHeader(DATE)
     ).foldLeft("")(_ + _ + "\n") + normalizeAmzHeaders(request) + "/" + bucket + request.getUri
     log.debug(data)
@@ -95,7 +138,7 @@ package object s3pository {
   def normalizeAmzHeaders(request: HttpRequest): String = {
     AMZN_HEADERS.foldLeft("") {
       (str, h) => {
-        Option(request.getHeader(h)).flatMap(v => Some(str + h + ":" + v + "\n")).getOrElse(str)
+        request.header(h).flatMap(v => Some(str + h + ":" + v + "\n")).getOrElse(str)
       }
     }
 
