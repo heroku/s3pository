@@ -224,8 +224,8 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
             log.info("Serving from S3 bucket %s: %s", client.repo.bucket, contentUri)
             Future.value(s3response)
           }
-          /*content not in S3, try to get it from the source repo*/
-          case code if (code == 404) => {
+          /*content not in S3 or s3 not responding in time, try to get it from the source repo*/
+          case code if (code == 404 || code == 504) => {
             val uri = client.repo.hostPath + contentUri
             request.setUri(uri)
             request.setHeader(HOST, client.repo.host)
@@ -358,7 +358,7 @@ object ProxyService {
       //.reportTo(NewRelicStatsReceiver)
       .name(host)
     if (ssl) (builder = builder.tlsWithoutValidation())
-    new FailureAccrualFactoryIgnoreCancelled(builder.buildFactory(), 2, 60.seconds)
+    new FailureAccrualFactoryIgnoreCancelled(builder.buildFactory(), 10, 240.seconds)
   }
 
   /*get the keys in an s3bucket, s3 only returns up to 1000 at a time so this can be called recursively*/
