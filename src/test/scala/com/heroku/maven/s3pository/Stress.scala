@@ -1,6 +1,7 @@
 package com.heroku.maven.s3pository
 
 import com.heroku.maven.s3pository.S3rver._
+import com.heroku.maven.s3pository.ProxyService._
 
 import java.util.concurrent.atomic.AtomicInteger
 import com.twitter.finagle.stats.SummarizingStatsReceiver
@@ -29,7 +30,6 @@ object Stress {
     val uri = new URI(args(0))
     val concurrency = args(1).toInt
     val totalRequests = args(2).toInt
-    val bucket = args(3)
 
     val errors = new AtomicInteger(0)
     val responses = MapMaker[HttpResponseStatus, AtomicInteger] {
@@ -48,15 +48,15 @@ object Stress {
       .hostConnectionLimit(concurrency)
       .build()
 
+    val keys  = proxies.foldLeft(List.empty[String]){
+      (l,p) =>
+        val keys = getKeys(listClient, p.bucket)
+        l ++
+          keys.map(p.prefix + "/" + _) ++
+          keys.map(all.prefix + "/" + _)
+    }
 
-    val listRequest = get("/").s3headers(bucket)
-
-    //get the keys in the bucket
-    val xResp = XML.loadString(listClient(listRequest).get().getContent.toString("UTF-8"))
-    //to a list
-    val keys = (xResp \\ "Contents" \\ "Key") map (_.text)
-    // add some 404s
-    val badKeys = (1 to (keys.size / 4)).toList map ("some/bad/random/artifact" + _.toString)
+    val badKeys = (1 to (keys.size / 10)).toList map ("some/bad/random/artifact" + _.toString)
     // get enough keys for the run
     var keyList = Stream.continually(Random.shuffle(keys ++ badKeys).toStream).flatten.take(totalRequests).toList
 
@@ -79,10 +79,12 @@ object Stress {
 
     val requests = Future.parallel(concurrency) {
       Future.times(totalRequests / concurrency) {
-        val request = get(uri.getPath + keyList.head).headers(Map(HOST -> uri.getHost))
+        val key = keyList.head
+        val request = get(key).headers(Map(HOST -> uri.getHost))
         //dont particularly care about thread safety
+        println(key)
         keyList = keyList.tail
-        println("making request")
+
         client(request
         ) onSuccess {
           response =>
