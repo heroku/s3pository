@@ -1,22 +1,25 @@
 package com.heroku.maven.s3pository
 
 
-
+import com.twitter.util.Future
 import com.twitter.conversions.storage._
 import com.twitter.finagle.builder.ServerBuilder
+import com.twitter.finagle.{Service, SimpleFilter}
+import com.twitter.finagle.stats.SummarizingStatsReceiver
+import com.twitter.finagle.http.Http
 import com.twitter.logging.Logger
 import com.twitter.logging.config.{ConsoleHandlerConfig, LoggerConfig}
 
 import java.net.InetSocketAddress
 
-import util.Properties
-import com.twitter.finagle.{Service, SimpleFilter}
-import com.twitter.finagle.stats.{StatsReceiver, SummarizingStatsReceiver}
-import com.twitter.finagle.http.Http
-import org.jboss.netty.handler.codec.http.{DefaultHttpResponse, HttpRequest, HttpResponse}
+import org.jboss.netty.handler.codec.http.{HttpRequest, HttpResponse}
 import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
 import org.jboss.netty.buffer.ChannelBuffers
-import com.twitter.util.Future
+
+import util.Properties
+
+
+
 
 object S3rver {
 

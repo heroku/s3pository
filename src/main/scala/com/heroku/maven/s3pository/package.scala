@@ -35,7 +35,6 @@ package object s3pository {
 
   val ALGORITHM = "HmacSHA1"
 
-  /*HttpRequest pimp*/
   class RichHttpRequest(val req: HttpRequest) {
 
     def headers(headers: Map[String, String]): HttpRequest = {
@@ -52,10 +51,6 @@ package object s3pository {
       headers(Map(HOST -> bucketHost(bucket), DATE -> amzDate)).sign(bucket)
     }
 
-    /*
-    use query after calling sign so that the query is not used in the signing process
-    todo phantom types to enforce
-    */
     def query(query: Map[String, String]): HttpRequest = {
       req.setUri(req.getUri + "?" + query.map(qp => (qp._1 + "=" + qp._2)).reduceLeft(_ + "&" + _))
       req
