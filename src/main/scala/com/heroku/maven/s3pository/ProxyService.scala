@@ -47,7 +47,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   val clients: HashMap[String, Client] = {
     repositories.foldLeft(new HashMap[String, Client]) {
       (m, repo) => {
-        m + (repo.prefix -> Client(clientService(repo.host, repo.port, repo.ssl, "source of:" + repo.bucket), clientService(repo.bucket + ".s3.amazonaws.com", 80, false, "s3 client for:"+repo.bucket), repo))
+        m + (repo.prefix -> Client(clientService(repo.host, repo.port, repo.ssl, "source of:" + repo.bucket), clientService(repo.bucket + ".s3.amazonaws.com", 80, false, "s3 client for:" + repo.bucket), repo))
       }
     }
   }
@@ -345,7 +345,7 @@ object ProxyService {
   }
 
   /*Build a Client ServiceFactory for the given endpoint*/
-  def clientService(host: String, port: Int, ssl: Boolean, name:String): ServiceFactory[HttpRequest, HttpResponse] = {
+  def clientService(host: String, port: Int, ssl: Boolean, name: String): ServiceFactory[HttpRequest, HttpResponse] = {
     import com.twitter.conversions.storage._
     var builder = ClientBuilder()
       .codec(Http(_maxRequestSize = 100.megabytes, _maxResponseSize = 100.megabyte))
@@ -385,13 +385,11 @@ object ProxyService {
 }
 
 
-
 class FailureAccrualFactoryIgnoreCancelled[Req, Rep](
-    underlying: ServiceFactory[Req, Rep],
-    numFailures: Int,
-    markDeadFor: Duration)
-  extends ServiceFactory[Req, Rep]
-{
+                                                      underlying: ServiceFactory[Req, Rep],
+                                                      numFailures: Int,
+                                                      markDeadFor: Duration)
+  extends ServiceFactory[Req, Rep] {
   private[this] var failureCount = 0
   private[this] var failedAt = Time.epoch
 
@@ -407,30 +405,45 @@ class FailureAccrualFactoryIgnoreCancelled[Req, Rep](
   }
 
   def make() =
-    underlying.make() map { service =>
-      new Service[Req, Rep] {
-        def apply(request: Req) = {
-          val result = service(request)
-          result respond {
-            case Throw(c:CancelledException) => log.debug("Ignore Throw(CancelledException)")
-            case Throw(t:TooManyConcurrentRequestsException) => log.debug("Ignore Throw(TooManyConcurrentRequestsException)")
-            case Throw(x:Exception)  => {
-              log.warning("accruing failure for %s",x.getClass.getSimpleName)
-              didFail()
+    underlying.make() map {
+      service =>
+        new Service[Req, Rep] {
+          def apply(request: Req) = {
+            val result = service(request)
+            result respond {
+              case Throw(c: CancelledException) => log.debug("respond Ignore Throw(CancelledException)")
+              case Throw(t: TooManyConcurrentRequestsException) => log.debug("respond Ignore Throw(TooManyConcurrentRequestsException)")
+              case Throw(x: Exception) => {
+                log.warning("accruing failure for %s", x.getClass.getSimpleName)
+                didFail()
+              }
+              case Return(_) => didSucceed()
             }
-            case Return(_) => didSucceed()
+            result
           }
-          result
+
+          override def release() = service.release()
+
+          override def isAvailable =
+            service.isAvailable && FailureAccrualFactoryIgnoreCancelled.this.isAvailable
+        }
+    } onFailure {
+      ex =>
+        ex match {
+          case c: CancelledException => log.debug("Ignore Throw(CancelledException)")
+          case t: TooManyConcurrentRequestsException => log.debug("Ignore Throw(TooManyConcurrentRequestsException)")
+          case x: Exception => {
+            log.warning("accruing failure for %s", x.getClass.getSimpleName)
+            didFail()
+          }
         }
 
-        override def release() = service.release()
-        override def isAvailable =
-          service.isAvailable && FailureAccrualFactoryIgnoreCancelled.this.isAvailable
-      }
-    } onFailure { _ => didFail() }
+    }
 
   override def isAvailable =
-    underlying.isAvailable && synchronized { failedAt.untilNow >= markDeadFor }
+    underlying.isAvailable && synchronized {
+      failedAt.untilNow >= markDeadFor
+    }
 
   override def close() = underlying.close()
 
