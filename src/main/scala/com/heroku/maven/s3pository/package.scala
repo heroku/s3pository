@@ -15,6 +15,7 @@ import org.jboss.netty.handler.codec.http._
 import com.twitter.finagle.ServiceFactory
 import com.twitter.util.Future
 import com.twitter.util.Future.CancelledException
+
 package object s3pository {
 
   lazy val log = Logger.get("s3pository")
@@ -92,7 +93,7 @@ package object s3pository {
         case cex: CancelledException => otherwise
         case ex@_ => {
           log.error(id + " " + msg + ":" + ex.getClass.getSimpleName, items: _*)
-          log.debug(ex, id + " " + msg, items)
+          log.debug(ex, id + " " + msg, items: _*)
           otherwise
         }
       } else {
