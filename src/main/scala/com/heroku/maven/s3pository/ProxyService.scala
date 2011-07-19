@@ -360,7 +360,8 @@ object ProxyService {
       .reportTo(stats)
       .name(name)
     if (ssl) (builder = builder.tlsWithoutValidation())
-    new FailureAccrualFactoryIgnoreCancelled(builder.buildFactory(), 10, 240.seconds)
+    builder.buildFactory()
+    //new FailureAccrualFactoryIgnoreCancelled(builder.buildFactory(), 10, 240.seconds)
   }
 
   /*get the keys in an s3bucket, s3 only returns up to 1000 at a time so this can be called recursively*/
