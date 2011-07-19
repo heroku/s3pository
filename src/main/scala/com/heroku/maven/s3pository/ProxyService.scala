@@ -24,6 +24,7 @@ import xml.XML
 import com.twitter.util.Future.CancelledException
 import annotation.implicitNotFound
 import com.twitter.finagle.{TooManyConcurrentRequestsException, ServiceFactory, Service}
+import com.twitter.finagle.stats.StatsReceiver
 
 /*
 HTTP Service that acts as a caching proxy server for the configured ProxiedRepository(s) and RepositoryGroup(s).
@@ -36,7 +37,7 @@ will respond to a request for
 by making requests to
     http://source.repo.com/path/to/repo/some/artifact.ext
 */
-class ProxyService(repositories: List[ProxiedRepository], groups: List[RepositoryGroup])(implicit s3key: S3Key, s3secret: S3Secret) extends Service[HttpRequest, HttpResponse] {
+class ProxyService(repositories: List[ProxiedRepository], groups: List[RepositoryGroup])(implicit s3key: S3Key, s3secret: S3Secret, stats:StatsReceiver) extends Service[HttpRequest, HttpResponse] {
 
   import ProxyService._
 
@@ -345,7 +346,7 @@ object ProxyService {
   }
 
   /*Build a Client ServiceFactory for the given endpoint*/
-  def clientService(host: String, port: Int, ssl: Boolean, name: String): ServiceFactory[HttpRequest, HttpResponse] = {
+  def clientService(host: String, port: Int, ssl: Boolean, name: String)(implicit stats:StatsReceiver): ServiceFactory[HttpRequest, HttpResponse] = {
     import com.twitter.conversions.storage._
     var builder = ClientBuilder()
       .codec(Http(_maxRequestSize = 100.megabytes, _maxResponseSize = 100.megabyte))
@@ -356,7 +357,7 @@ object ProxyService {
       .hostConnectionMaxIdleTime(5.seconds)
       .retries(1)
       //.failureAccrualParams(2, 60.seconds)
-      //.reportTo(NewRelicStatsReceiver)
+      .reportTo(stats)
       .name(name)
     if (ssl) (builder = builder.tlsWithoutValidation())
     new FailureAccrualFactoryIgnoreCancelled(builder.buildFactory(), 10, 240.seconds)

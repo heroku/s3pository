@@ -1,7 +1,8 @@
 package com.heroku.maven.s3pository
 
+
+
 import com.twitter.conversions.storage._
-import com.twitter.finagle.http.Http
 import com.twitter.finagle.builder.ServerBuilder
 import com.twitter.logging.Logger
 import com.twitter.logging.config.{ConsoleHandlerConfig, LoggerConfig}
@@ -9,7 +10,13 @@ import com.twitter.logging.config.{ConsoleHandlerConfig, LoggerConfig}
 import java.net.InetSocketAddress
 
 import util.Properties
-
+import com.twitter.finagle.{Service, SimpleFilter}
+import com.twitter.finagle.stats.{StatsReceiver, SummarizingStatsReceiver}
+import com.twitter.finagle.http.Http
+import org.jboss.netty.handler.codec.http.{DefaultHttpResponse, HttpRequest, HttpResponse}
+import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
+import org.jboss.netty.buffer.ChannelBuffers
+import com.twitter.util.Future
 
 object S3rver {
 
@@ -60,14 +67,18 @@ object S3rver {
     logConf.apply()
     val supressNettyWarning = new LoggerConfig {
       node = "org.jboss.netty.channel.SimpleChannelHandler"
-      level = Logger.ERROR
+      level = Logger.WARNING
     }
     supressNettyWarning.apply()
     val log = Logger.get("S3Server-Main")
     log.warning("Starting S3rver")
 
+    implicit val stats = new SummarizingStatsReceiver
+
     /*Build the Service*/
-    val service = new ProxyService(proxies, List(all))
+    val service = new Stats(stats) andThen new ProxyService(proxies, List(all))
+
+
 
     /*Grab port to bind to*/
     val address = new InetSocketAddress(Properties.envOrElse("PORT", "8080").toInt)
@@ -86,6 +97,18 @@ object S3rver {
   }
 }
 
+class Stats(rec:SummarizingStatsReceiver) extends SimpleFilter[HttpRequest, HttpResponse] {
+  def apply(request: HttpRequest, service: Service[HttpRequest, HttpResponse]) = {
+    if(request.getUri.equals("/stats")){
+      val resp = ok()
+      resp.setHeader(CONTENT_TYPE, "text/plain")
+      resp.setContent(ChannelBuffers.wrappedBuffer(rec.summary.getBytes("UTF-8")))
+      Future.value(resp)
+    } else {
+       service(request)
+    }
+  }
+}
 
 
 
