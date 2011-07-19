@@ -232,7 +232,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
             request.setHeader(HOST, client.repo.host)
             client.repoService.tryService(request, timeout, client.repo.host)("error checking source repo %s for %s ", client.repo.host, contentUri).flatMap {
               response => {
-                if (response.getStatus == HttpResponseStatus.OK && (request.getMethod equals HttpMethod.GET)) {
+                if (response.getStatus == HttpResponseStatus.OK && (request.getMethod equals HttpMethod.GET) && code == 404) {
                   /*found the content in the source repo, do an async put of the content to S3*/
                   log.info("Serving from Source %s: %s", client.repo.host, contentUri)
                   val s3buffer = response.getContent.duplicate()
