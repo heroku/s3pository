@@ -89,7 +89,7 @@ object S3rver {
       .bindTo(address)
       .sendBufferSize(1048576)
       .recvBufferSize(1048576)
-      //.reportTo(NewRelicStatsReceiver)
+      .reportTo(stats)
       .name("s3pository")
       .build(service)
 
