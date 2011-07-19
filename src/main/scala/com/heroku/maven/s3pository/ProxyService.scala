@@ -263,7 +263,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     response.ifHeader(ETAG)(s3Put.setHeader(SOURCE_ETAG, _))
     response.ifHeader(LAST_MODIFIED)(s3Put.setHeader(SOURCE_MOD, _))
     s3Put.sign(client.repo.bucket)
-    client.s3Service.tryService {
+    client.s3Service {
       s3Put
     } onSuccess {
       resp => {
