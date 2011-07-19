@@ -12,9 +12,9 @@ import org.joda.time.{DateTimeZone, DateTime}
 
 import com.twitter.logging.Logger
 import org.jboss.netty.handler.codec.http._
-import com.twitter.finagle.ServiceFactory
 import com.twitter.util.Future
 import com.twitter.util.Future.CancelledException
+import com.twitter.finagle.{Service, ServiceFactory}
 
 package object s3pository {
 
@@ -105,6 +105,26 @@ package object s3pository {
   }
 
   implicit def factToRichFact[Req, Res](fact: ServiceFactory[Req, Res]): RichServiceFactory[Req, Res] = new RichServiceFactory[Req, Res](fact)
+
+
+  class RichService[Req, Res](val service: Service[Req, Res]) {
+     def tryService(req: Req, otherwise: Res, id: String)(msg: String, items: Any*): Future[Res] = {
+       if (service.isAvailable) service(req).handle {
+         case cex: CancelledException => otherwise
+         case ex@_ => {
+           log.error(id + " " + msg + ":" + ex.getClass.getSimpleName, items: _*)
+           log.debug(ex, id + " " + msg, items: _*)
+           otherwise
+         }
+       } else {
+         log.warning("service for: %s ->unavailable due to failure accrual", id)
+         Future.value(otherwise)
+       }
+     }
+
+   }
+
+   implicit def serviceToRichService[Req, Res](s: Service[Req, Res]): RichService[Req, Res] = new RichService[Req, Res](s)
 
 
   /*req creation sugar*/

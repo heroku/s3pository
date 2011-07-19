@@ -263,7 +263,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     response.ifHeader(ETAG)(s3Put.setHeader(SOURCE_ETAG, _))
     response.ifHeader(LAST_MODIFIED)(s3Put.setHeader(SOURCE_MOD, _))
     s3Put.sign(client.repo.bucket)
-    client.s3Service.service {
+    client.s3Service.tryService {
       s3Put
     } onSuccess {
       resp => {
@@ -346,7 +346,7 @@ object ProxyService {
   }
 
   /*Build a Client ServiceFactory for the given endpoint*/
-  def clientService(host: String, port: Int, ssl: Boolean, name: String)(implicit stats:StatsReceiver): ServiceFactory[HttpRequest, HttpResponse] = {
+  def clientService(host: String, port: Int, ssl: Boolean, name: String)(implicit stats:StatsReceiver): Service[HttpRequest, HttpResponse] = {
     import com.twitter.conversions.storage._
     var builder = ClientBuilder()
       .codec(Http(_maxRequestSize = 100.megabytes, _maxResponseSize = 100.megabyte))
@@ -360,7 +360,7 @@ object ProxyService {
       .reportTo(stats)
       .name(name)
     if (ssl) (builder = builder.tlsWithoutValidation())
-    builder.buildFactory()
+    builder.build()
     //new FailureAccrualFactoryIgnoreCancelled(builder.buildFactory(), 10, 240.seconds)
   }
 
@@ -463,7 +463,7 @@ case class RepositoryGroup(prefix: String, repos: List[ProxiedRepository]) {
 }
 
 /*Holds a ProxiedRepository and the associated source and s3 client ServiceFactories*/
-case class Client(repoService: ServiceFactory[HttpRequest, HttpResponse], s3Service: ServiceFactory[HttpRequest, HttpResponse], repo: ProxiedRepository)
+case class Client(repoService: Service[HttpRequest, HttpResponse], s3Service: Service[HttpRequest, HttpResponse], repo: ProxiedRepository)
 
 @implicitNotFound(msg = "cannot find implicit S3Key in scope")
 case class S3Key(key: String)
