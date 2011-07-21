@@ -13,7 +13,6 @@ import org.joda.time.{DateTimeZone, DateTime}
 import com.twitter.logging.Logger
 import org.jboss.netty.handler.codec.http._
 import com.twitter.util.Future
-import com.twitter.util.Future.CancelledException
 import com.twitter.finagle.{Service, ServiceFactory}
 
 package object s3pository {
@@ -85,7 +84,6 @@ package object s3pository {
   class RichServiceFactory[Req, Res](val fact: ServiceFactory[Req, Res]) {
     def tryService(req: Req, otherwise: Res, id: String)(msg: String, items: Any*): Future[Res] = {
       if (fact.isAvailable) fact.service(req).handle {
-        case cex: CancelledException => otherwise
         case ex@_ => {
           log.error(id + " " + msg + ":" + ex.getClass.getSimpleName, items: _*)
           log.debug(ex, id + " " + msg, items: _*)
@@ -105,7 +103,6 @@ package object s3pository {
   class RichService[Req, Res](val service: Service[Req, Res]) {
      def tryService(req: Req, otherwise: Res, id: String)(msg: String, items: Any*): Future[Res] = {
        if (service.isAvailable) service(req).handle {
-         case cex: CancelledException => otherwise
          case ex@_ => {
            log.error(id + " " + msg + ":" + ex.getClass.getSimpleName, items: _*)
            log.debug(ex, id + " " + msg, items: _*)

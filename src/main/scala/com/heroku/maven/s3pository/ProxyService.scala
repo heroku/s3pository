@@ -21,7 +21,6 @@ import org.jboss.netty.handler.codec.http._
 import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
 
 import xml.XML
-import com.twitter.util.Future.CancelledException
 import annotation.implicitNotFound
 import com.twitter.finagle.{TooManyConcurrentRequestsException, ServiceFactory, Service}
 import com.twitter.finagle.stats.StatsReceiver
@@ -90,8 +89,6 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     } onFailure {
       ex =>
         log.error(ex, "failure while creating bucket:%s", client.repo.bucket)
-    } onCancellation {
-      log.warning("create bucket: %s was cancelled", client.repo.bucket)
     }
   }
 
@@ -164,9 +161,6 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
         singleRepoRequest(client, contentUri, cloneRequest(request)).within(timer, 6.seconds).handle {
           case _: TimeoutException => {
             log.warning("timeout in parallel req to %s for %s", client.repo.host, contentUri)
-            timeout
-          }
-          case _: CancelledException => {
             timeout
           }
           case _@ex => {
@@ -275,8 +269,6 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       }
     } onFailure {
       ex => log.error(ex, "Exception in S3 Put: ")
-    } onCancellation {
-      log.error("S3Put cancelled %s", s3Put.toString)
     }
   }
 
@@ -414,7 +406,6 @@ class FailureAccrualFactoryIgnoreCancelled[Req, Rep](
           def apply(request: Req) = {
             val result = service(request)
             result respond {
-              case Throw(c: CancelledException) => log.debug("respond Ignore Throw(CancelledException)")
               case Throw(t: TooManyConcurrentRequestsException) => log.debug("respond Ignore Throw(TooManyConcurrentRequestsException)")
               case Throw(x: Exception) => {
                 log.warning("accruing failure for %s", x.getClass.getSimpleName)
@@ -433,7 +424,6 @@ class FailureAccrualFactoryIgnoreCancelled[Req, Rep](
     } onFailure {
       ex =>
         ex match {
-          case c: CancelledException => log.debug("Ignore Throw(CancelledException)")
           case t: TooManyConcurrentRequestsException => log.debug("Ignore Throw(TooManyConcurrentRequestsException)")
           case x: Exception => {
             log.warning("accruing failure for %s", x.getClass.getSimpleName)
