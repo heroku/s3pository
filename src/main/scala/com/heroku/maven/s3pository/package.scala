@@ -102,15 +102,12 @@ package object s3pository {
 
   class RichService[Req, Res](val service: Service[Req, Res]) {
      def tryService(req: Req, otherwise: Res, id: String)(msg: String, items: Any*): Future[Res] = {
-       if (service.isAvailable) service(req).handle {
+       service(req).handle {
          case ex@_ => {
-           log.error(id + " " + msg + ":" + ex.getClass.getSimpleName, items: _*)
+           log.warning(id + " " + msg + ":" + ex.getClass.getSimpleName, items: _*)
            log.debug(ex, id + " " + msg, items: _*)
            otherwise
          }
-       } else {
-         log.warning("service for: %s ->unavailable due to failure accrual", id)
-         Future.value(otherwise)
        }
      }
 
