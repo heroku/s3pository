@@ -480,7 +480,7 @@ class Client(repoServiceFactory: => Service[HttpRequest, HttpResponse], s3Servic
       } else {
         log.warning("%s: cas of new service failed, releasing new service and calling get again", msg)
         newSvc.release()
-        get(ref, fact)
+        get(ref, fact, msg)
       }
     }
   }
