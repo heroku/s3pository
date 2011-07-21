@@ -1,14 +1,24 @@
 package com.heroku.maven.s3pository
 
+
+import com.twitter.util.Future
 import com.twitter.conversions.storage._
-import com.twitter.finagle.http.Http
 import com.twitter.finagle.builder.ServerBuilder
+import com.twitter.finagle.{Service, SimpleFilter}
+import com.twitter.finagle.stats.SummarizingStatsReceiver
+import com.twitter.finagle.http.Http
 import com.twitter.logging.Logger
 import com.twitter.logging.config.{ConsoleHandlerConfig, LoggerConfig}
 
 import java.net.InetSocketAddress
 
+import org.jboss.netty.handler.codec.http.{HttpRequest, HttpResponse}
+import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
+import org.jboss.netty.buffer.ChannelBuffers
+
 import util.Properties
+
+
 
 
 object S3rver {
@@ -55,19 +65,23 @@ object S3rver {
     val logConf = new LoggerConfig {
       node = ""
       level = Logger.levelNames.get(Properties.envOrElse("LOG_LEVEL", "INFO"))
-      handlers = List(new ConsoleHandlerConfig, new NewRelicLogHandlerConfig)
+      handlers = List(new ConsoleHandlerConfig/*, new NewRelicLogHandlerConfig*/)
     }
     logConf.apply()
     val supressNettyWarning = new LoggerConfig {
       node = "org.jboss.netty.channel.SimpleChannelHandler"
-      level = Logger.ERROR
+      level = Logger.WARNING
     }
     supressNettyWarning.apply()
     val log = Logger.get("S3Server-Main")
     log.warning("Starting S3rver")
 
+    implicit val stats = new SummarizingStatsReceiver
+
     /*Build the Service*/
-    val service = new ProxyService(proxies, List(all))
+    val service = new Stats(stats) andThen new ProxyService(proxies, List(all))
+
+
 
     /*Grab port to bind to*/
     val address = new InetSocketAddress(Properties.envOrElse("PORT", "8080").toInt)
@@ -78,7 +92,7 @@ object S3rver {
       .bindTo(address)
       .sendBufferSize(1048576)
       .recvBufferSize(1048576)
-      //.reportTo(NewRelicStatsReceiver)
+      .reportTo(stats)
       .name("s3pository")
       .build(service)
 
@@ -86,6 +100,18 @@ object S3rver {
   }
 }
 
+class Stats(rec:SummarizingStatsReceiver) extends SimpleFilter[HttpRequest, HttpResponse] {
+  def apply(request: HttpRequest, service: Service[HttpRequest, HttpResponse]) = {
+    if(request.getUri.equals("/stats")){
+      val resp = ok()
+      resp.setHeader(CONTENT_TYPE, "text/plain")
+      resp.setContent(ChannelBuffers.wrappedBuffer(rec.summary.getBytes("UTF-8")))
+      Future.value(resp)
+    } else {
+       service(request)
+    }
+  }
+}
 
 
 

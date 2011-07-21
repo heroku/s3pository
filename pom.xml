@@ -16,13 +16,13 @@
         <dependency>
             <groupId>com.twitter</groupId>
             <artifactId>finagle-core</artifactId>
-            <version>1.6.2</version>
+            <version>1.7.4</version>
             <scope>compile</scope>
         </dependency>
          <dependency>
             <groupId>com.twitter</groupId>
             <artifactId>util-logging</artifactId>
-            <version>1.9.0</version>
+            <version>1.10.2</version>
             <scope>compile</scope>
         </dependency>
         <dependency>

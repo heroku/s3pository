@@ -5,7 +5,6 @@ import com.newrelic.api.agent.Trace
 import com.twitter.conversions.time._
 import com.twitter.logging.Logger
 import com.twitter.util._
-import com.twitter.finagle.{ServiceFactory, Service}
 import com.twitter.finagle.http.Http
 import com.twitter.finagle.builder.ClientBuilder
 
@@ -22,7 +21,9 @@ import org.jboss.netty.handler.codec.http._
 import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
 
 import xml.XML
-import com.twitter.util.Future.CancelledException
+import annotation.implicitNotFound
+import com.twitter.finagle.{TooManyConcurrentRequestsException, ServiceFactory, Service}
+import com.twitter.finagle.stats.StatsReceiver
 
 /*
 HTTP Service that acts as a caching proxy server for the configured ProxiedRepository(s) and RepositoryGroup(s).
@@ -35,7 +36,7 @@ will respond to a request for
 by making requests to
     http://source.repo.com/path/to/repo/some/artifact.ext
 */
-class ProxyService(repositories: List[ProxiedRepository], groups: List[RepositoryGroup])(implicit s3key: S3Key, s3secret: S3Secret) extends Service[HttpRequest, HttpResponse] {
+class ProxyService(repositories: List[ProxiedRepository], groups: List[RepositoryGroup])(implicit s3key: S3Key, s3secret: S3Secret, stats:StatsReceiver) extends Service[HttpRequest, HttpResponse] {
 
   import ProxyService._
 
@@ -46,7 +47,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   val clients: HashMap[String, Client] = {
     repositories.foldLeft(new HashMap[String, Client]) {
       (m, repo) => {
-        m + (repo.prefix -> Client(clientService(repo.host, repo.port, repo.ssl), clientService(repo.bucket + ".s3.amazonaws.com", 80, false), repo))
+        m + (repo.prefix -> Client(clientService(repo.host, repo.port, repo.ssl, "source of:" + repo.bucket), clientService(repo.bucket + ".s3.amazonaws.com", 80, false, "s3 client for:" + repo.bucket), repo))
       }
     }
   }
@@ -88,8 +89,6 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     } onFailure {
       ex =>
         log.error(ex, "failure while creating bucket:%s", client.repo.bucket)
-    } onCancellation {
-      log.warning("create bucket: %s was cancelled", client.repo.bucket)
     }
   }
 
@@ -164,9 +163,6 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
             log.warning("timeout in parallel req to %s for %s", client.repo.host, contentUri)
             timeout
           }
-          case _: CancelledException => {
-            timeout
-          }
           case _@ex => {
             log.error(ex, "error in parallel req to %s for %s", client.repo.host, contentUri)
             timeout
@@ -224,14 +220,14 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
             log.info("Serving from S3 bucket %s: %s", client.repo.bucket, contentUri)
             Future.value(s3response)
           }
-          /*content not in S3, try to get it from the source repo*/
-          case code if (code == 404) => {
+          /*content not in S3 or s3 not responding in time, try to get it from the source repo*/
+          case code if (code == 404 || code == 504) => {
             val uri = client.repo.hostPath + contentUri
             request.setUri(uri)
             request.setHeader(HOST, client.repo.host)
             client.repoService.tryService(request, timeout, client.repo.host)("error checking source repo %s for %s ", client.repo.host, contentUri).flatMap {
               response => {
-                if (response.getStatus == HttpResponseStatus.OK && (request.getMethod equals HttpMethod.GET)) {
+                if (response.getStatus == HttpResponseStatus.OK && (request.getMethod equals HttpMethod.GET) && code == 404) {
                   /*found the content in the source repo, do an async put of the content to S3*/
                   log.info("Serving from Source %s: %s", client.repo.host, contentUri)
                   val s3buffer = response.getContent.duplicate()
@@ -261,7 +257,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     response.ifHeader(ETAG)(s3Put.setHeader(SOURCE_ETAG, _))
     response.ifHeader(LAST_MODIFIED)(s3Put.setHeader(SOURCE_MOD, _))
     s3Put.sign(client.repo.bucket)
-    client.s3Service.service {
+    client.s3Service {
       s3Put
     } onSuccess {
       resp => {
@@ -273,8 +269,6 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       }
     } onFailure {
       ex => log.error(ex, "Exception in S3 Put: ")
-    } onCancellation {
-      log.error("S3Put cancelled %s", s3Put.toString)
     }
   }
 
@@ -344,7 +338,7 @@ object ProxyService {
   }
 
   /*Build a Client ServiceFactory for the given endpoint*/
-  def clientService(host: String, port: Int, ssl: Boolean): ServiceFactory[HttpRequest, HttpResponse] = {
+  def clientService(host: String, port: Int, ssl: Boolean, name: String)(implicit stats:StatsReceiver): Service[HttpRequest, HttpResponse] = {
     import com.twitter.conversions.storage._
     var builder = ClientBuilder()
       .codec(Http(_maxRequestSize = 100.megabytes, _maxResponseSize = 100.megabyte))
@@ -354,11 +348,13 @@ object ProxyService {
       .hostConnectionLimit(Integer.MAX_VALUE)
       .hostConnectionMaxIdleTime(5.seconds)
       .retries(1)
+      .requestTimeout(5.seconds)
       //.failureAccrualParams(2, 60.seconds)
-      //.reportTo(NewRelicStatsReceiver)
-      .name(host)
+      .reportTo(stats)
+      .name(name)
     if (ssl) (builder = builder.tlsWithoutValidation())
-    new FailureAccrualFactoryIgnoreCancelled(builder.buildFactory(), 2, 60.seconds)
+    builder.build()
+    //new FailureAccrualFactoryIgnoreCancelled(builder.buildFactory(), 10, 240.seconds)
   }
 
   /*get the keys in an s3bucket, s3 only returns up to 1000 at a time so this can be called recursively*/
@@ -384,13 +380,11 @@ object ProxyService {
 }
 
 
-
 class FailureAccrualFactoryIgnoreCancelled[Req, Rep](
-    underlying: ServiceFactory[Req, Rep],
-    numFailures: Int,
-    markDeadFor: Duration)
-  extends ServiceFactory[Req, Rep]
-{
+                                                      underlying: ServiceFactory[Req, Rep],
+                                                      numFailures: Int,
+                                                      markDeadFor: Duration)
+  extends ServiceFactory[Req, Rep] {
   private[this] var failureCount = 0
   private[this] var failedAt = Time.epoch
 
@@ -406,26 +400,43 @@ class FailureAccrualFactoryIgnoreCancelled[Req, Rep](
   }
 
   def make() =
-    underlying.make() map { service =>
-      new Service[Req, Rep] {
-        def apply(request: Req) = {
-          val result = service(request)
-          result respond {
-            case Throw(c:CancelledException) => log.debug("Ignore Throw(CancelledException)")
-            case Throw(_)  => didFail()
-            case Return(_) => didSucceed()
+    underlying.make() map {
+      service =>
+        new Service[Req, Rep] {
+          def apply(request: Req) = {
+            val result = service(request)
+            result respond {
+              case Throw(t: TooManyConcurrentRequestsException) => log.debug("respond Ignore Throw(TooManyConcurrentRequestsException)")
+              case Throw(x: Exception) => {
+                log.warning("accruing failure for %s", x.getClass.getSimpleName)
+                didFail()
+              }
+              case Return(_) => didSucceed()
+            }
+            result
           }
-          result
+
+          override def release() = service.release()
+
+          override def isAvailable =
+            service.isAvailable && FailureAccrualFactoryIgnoreCancelled.this.isAvailable
+        }
+    } onFailure {
+      ex =>
+        ex match {
+          case t: TooManyConcurrentRequestsException => log.debug("Ignore Throw(TooManyConcurrentRequestsException)")
+          case x: Exception => {
+            log.warning("accruing failure for %s", x.getClass.getSimpleName)
+            didFail()
+          }
         }
 
-        override def release() = service.release()
-        override def isAvailable =
-          service.isAvailable && FailureAccrualFactoryIgnoreCancelled.this.isAvailable
-      }
-    } onFailure { _ => didFail() }
+    }
 
   override def isAvailable =
-    underlying.isAvailable && synchronized { failedAt.untilNow >= markDeadFor }
+    underlying.isAvailable && synchronized {
+      failedAt.untilNow >= markDeadFor
+    }
 
   override def close() = underlying.close()
 
@@ -443,10 +454,12 @@ case class RepositoryGroup(prefix: String, repos: List[ProxiedRepository]) {
 }
 
 /*Holds a ProxiedRepository and the associated source and s3 client ServiceFactories*/
-case class Client(repoService: ServiceFactory[HttpRequest, HttpResponse], s3Service: ServiceFactory[HttpRequest, HttpResponse], repo: ProxiedRepository)
+case class Client(repoService: Service[HttpRequest, HttpResponse], s3Service: Service[HttpRequest, HttpResponse], repo: ProxiedRepository)
 
+@implicitNotFound(msg = "cannot find implicit S3Key in scope")
 case class S3Key(key: String)
 
+@implicitNotFound(msg = "cannot find implicit S3Secret in scope")
 case class S3Secret(secret: String)
 
 

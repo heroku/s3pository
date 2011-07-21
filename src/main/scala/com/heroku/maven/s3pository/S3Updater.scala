@@ -10,6 +10,8 @@ import com.twitter.finagle.http.Http
 import com.twitter.conversions.storage._
 import com.twitter.conversions.time._
 import com.twitter.finagle.Service
+import com.twitter.finagle.stats.SummarizingStatsReceiver
+import com.twitter.util.{Time, Future}
 
 import java.net.InetSocketAddress
 
@@ -17,11 +19,6 @@ import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
 import org.jboss.netty.handler.codec.http._
 
 import util.Properties
-
-import xml.XML
-import com.twitter.finagle.stats.SummarizingStatsReceiver
-import com.twitter.util.{Time, Future}
-
 
 /*checks for updated artifacts in source repos*/
 object S3Updater {

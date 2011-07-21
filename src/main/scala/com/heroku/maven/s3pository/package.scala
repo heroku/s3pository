@@ -12,9 +12,9 @@ import org.joda.time.{DateTimeZone, DateTime}
 
 import com.twitter.logging.Logger
 import org.jboss.netty.handler.codec.http._
-import com.twitter.finagle.ServiceFactory
 import com.twitter.util.Future
-import com.twitter.util.Future.CancelledException
+import com.twitter.finagle.{Service, ServiceFactory}
+
 package object s3pository {
 
   lazy val log = Logger.get("s3pository")
@@ -34,7 +34,6 @@ package object s3pository {
 
   val ALGORITHM = "HmacSHA1"
 
-  /*HttpRequest pimp*/
   class RichHttpRequest(val req: HttpRequest) {
 
     def headers(headers: Map[String, String]): HttpRequest = {
@@ -51,10 +50,6 @@ package object s3pository {
       headers(Map(HOST -> bucketHost(bucket), DATE -> amzDate)).sign(bucket)
     }
 
-    /*
-    use query after calling sign so that the query is not used in the signing process
-    todo phantom types to enforce
-    */
     def query(query: Map[String, String]): HttpRequest = {
       req.setUri(req.getUri + "?" + query.map(qp => (qp._1 + "=" + qp._2)).reduceLeft(_ + "&" + _))
       req
@@ -89,10 +84,9 @@ package object s3pository {
   class RichServiceFactory[Req, Res](val fact: ServiceFactory[Req, Res]) {
     def tryService(req: Req, otherwise: Res, id: String)(msg: String, items: Any*): Future[Res] = {
       if (fact.isAvailable) fact.service(req).handle {
-        case cex: CancelledException => otherwise
         case ex@_ => {
           log.error(id + " " + msg + ":" + ex.getClass.getSimpleName, items: _*)
-          log.debug(ex, id + " " + msg, items)
+          log.debug(ex, id + " " + msg, items: _*)
           otherwise
         }
       } else {
@@ -104,6 +98,22 @@ package object s3pository {
   }
 
   implicit def factToRichFact[Req, Res](fact: ServiceFactory[Req, Res]): RichServiceFactory[Req, Res] = new RichServiceFactory[Req, Res](fact)
+
+
+  class RichService[Req, Res](val service: Service[Req, Res]) {
+     def tryService(req: Req, otherwise: Res, id: String)(msg: String, items: Any*): Future[Res] = {
+       service(req).handle {
+         case ex@_ => {
+           log.warning(id + " " + msg + ":" + ex.getClass.getSimpleName, items: _*)
+           log.debug(ex, id + " " + msg, items: _*)
+           otherwise
+         }
+       }
+     }
+
+   }
+
+   implicit def serviceToRichService[Req, Res](s: Service[Req, Res]): RichService[Req, Res] = new RichService[Req, Res](s)
 
 
   /*req creation sugar*/
