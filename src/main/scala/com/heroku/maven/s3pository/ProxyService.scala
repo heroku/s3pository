@@ -24,6 +24,7 @@ import xml.XML
 import annotation.implicitNotFound
 import com.twitter.finagle.{TooManyConcurrentRequestsException, ServiceFactory, Service}
 import com.twitter.finagle.stats.StatsReceiver
+import java.util.concurrent.atomic.AtomicReference
 
 /*
 HTTP Service that acts as a caching proxy server for the configured ProxiedRepository(s) and RepositoryGroup(s).
@@ -36,7 +37,7 @@ will respond to a request for
 by making requests to
     http://source.repo.com/path/to/repo/some/artifact.ext
 */
-class ProxyService(repositories: List[ProxiedRepository], groups: List[RepositoryGroup])(implicit s3key: S3Key, s3secret: S3Secret, stats:StatsReceiver) extends Service[HttpRequest, HttpResponse] {
+class ProxyService(repositories: List[ProxiedRepository], groups: List[RepositoryGroup])(implicit s3key: S3Key, s3secret: S3Secret, stats: StatsReceiver) extends Service[HttpRequest, HttpResponse] {
 
   import ProxyService._
 
@@ -47,7 +48,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   val clients: HashMap[String, Client] = {
     repositories.foldLeft(new HashMap[String, Client]) {
       (m, repo) => {
-        m + (repo.prefix -> Client(clientService(repo.host, repo.port, repo.ssl, "source of:" + repo.bucket), clientService(repo.bucket + ".s3.amazonaws.com", 80, false, "s3 client for:" + repo.bucket), repo))
+        m + (repo.prefix -> new Client(clientService(repo.host, repo.port, repo.ssl, "source of:" + repo.bucket), clientService(repo.bucket + ".s3.amazonaws.com", 80, false, "s3 client for:" + repo.bucket), repo))
       }
     }
   }
@@ -338,7 +339,7 @@ object ProxyService {
   }
 
   /*Build a Client ServiceFactory for the given endpoint*/
-  def clientService(host: String, port: Int, ssl: Boolean, name: String)(implicit stats:StatsReceiver): Service[HttpRequest, HttpResponse] = {
+  def clientService(host: String, port: Int, ssl: Boolean, name: String)(implicit stats: StatsReceiver): Service[HttpRequest, HttpResponse] = {
     import com.twitter.conversions.storage._
     var builder = ClientBuilder()
       .codec(Http(_maxRequestSize = 100.megabytes, _maxResponseSize = 100.megabyte))
@@ -454,7 +455,38 @@ case class RepositoryGroup(prefix: String, repos: List[ProxiedRepository]) {
 }
 
 /*Holds a ProxiedRepository and the associated source and s3 client ServiceFactories*/
-case class Client(repoService: Service[HttpRequest, HttpResponse], s3Service: Service[HttpRequest, HttpResponse], repo: ProxiedRepository)
+class Client(repoServiceFactory: => Service[HttpRequest, HttpResponse], s3ServiceFactory: => Service[HttpRequest, HttpResponse], val repo: ProxiedRepository) {
+  val repoRef: AtomicReference[Service[HttpRequest, HttpResponse]] = new AtomicReference[Service[HttpRequest, HttpResponse]](repoServiceFactory)
+  val s3Ref: AtomicReference[Service[HttpRequest, HttpResponse]] = new AtomicReference[Service[HttpRequest, HttpResponse]](s3ServiceFactory)
+
+  def repoService: Service[HttpRequest, HttpResponse] = {
+    get(repoRef, repoServiceFactory, repo.host)
+  }
+
+  def s3Service: Service[HttpRequest, HttpResponse] = {
+    get(s3Ref, s3ServiceFactory, repo.bucket)
+  }
+
+  private def get(ref: AtomicReference[Service[HttpRequest, HttpResponse]], fact: => Service[HttpRequest, HttpResponse], msg: String): Service[HttpRequest, HttpResponse] = {
+    val svc = ref.get()
+    if (svc.isAvailable) svc
+    else {
+      log.warning("%s: service was unavailable", msg)
+      val newSvc = fact
+      if (ref.compareAndSet(svc, newSvc)) {
+        log.warning("%s: cas-ed new service for, releasing old one", msg)
+        svc.release()
+        newSvc
+      } else {
+        log.warning("%s: cas of new service failed, releasing new service and calling get again", msg)
+        newSvc.release()
+        get(ref, fact)
+      }
+    }
+  }
+
+
+}
 
 @implicitNotFound(msg = "cannot find implicit S3Key in scope")
 case class S3Key(key: String)
