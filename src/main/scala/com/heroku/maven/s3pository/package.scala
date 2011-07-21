@@ -13,7 +13,7 @@ import org.joda.time.{DateTimeZone, DateTime}
 import com.twitter.logging.Logger
 import org.jboss.netty.handler.codec.http._
 import com.twitter.util.Future
-import com.twitter.finagle.{Service, ServiceFactory}
+import com.twitter.finagle.{TimedoutRequestException, CancelledRequestException, Service}
 
 package object s3pository {
 
@@ -81,39 +81,26 @@ package object s3pository {
 
   implicit def respToRichResp(resp: HttpResponse): RichHttpResponse = new RichHttpResponse(resp)
 
-  class RichServiceFactory[Req, Res](val fact: ServiceFactory[Req, Res]) {
+
+  class RichService[Req, Res](val service: Service[Req, Res]) {
     def tryService(req: Req, otherwise: Res, id: String)(msg: String, items: Any*): Future[Res] = {
-      if (fact.isAvailable) fact.service(req).handle {
+      service(req).handle {
+        case eex: CancelledRequestException => {
+          log.debug("Recieved an expected exception type, nothing to see here")
+          log.debug(eex, id + " " + msg, items: _*)
+          otherwise
+        }
         case ex@_ => {
-          log.error(id + " " + msg + ":" + ex.getClass.getSimpleName, items: _*)
+          log.warning(id + " " + msg + ":" + ex.getClass.getSimpleName, items: _*)
           log.debug(ex, id + " " + msg, items: _*)
           otherwise
         }
-      } else {
-        log.warning("service factory for: %s ->unavailable due to failure accrual", id)
-        Future.value(otherwise)
       }
     }
 
   }
 
-  implicit def factToRichFact[Req, Res](fact: ServiceFactory[Req, Res]): RichServiceFactory[Req, Res] = new RichServiceFactory[Req, Res](fact)
-
-
-  class RichService[Req, Res](val service: Service[Req, Res]) {
-     def tryService(req: Req, otherwise: Res, id: String)(msg: String, items: Any*): Future[Res] = {
-       service(req).handle {
-         case ex@_ => {
-           log.warning(id + " " + msg + ":" + ex.getClass.getSimpleName, items: _*)
-           log.debug(ex, id + " " + msg, items: _*)
-           otherwise
-         }
-       }
-     }
-
-   }
-
-   implicit def serviceToRichService[Req, Res](s: Service[Req, Res]): RichService[Req, Res] = new RichService[Req, Res](s)
+  implicit def serviceToRichService[Req, Res](s: Service[Req, Res]): RichService[Req, Res] = new RichService[Req, Res](s)
 
 
   /*req creation sugar*/
