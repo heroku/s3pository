@@ -342,8 +342,8 @@ object ProxyService {
     import com.twitter.conversions.storage._
     var builder = ClientBuilder()
       .codec(Http(_maxRequestSize = 100.megabytes, _maxResponseSize = 100.megabyte))
-      .sendBufferSize(1048576)
-      .recvBufferSize(1048576)
+      .sendBufferSize(262144)
+      .recvBufferSize(262144)
       .hosts(new InetSocketAddress(host, port))
       .hostConnectionLimit(Integer.MAX_VALUE)
       .hostConnectionMaxIdleTime(5.seconds)
