@@ -56,8 +56,8 @@ object Stress {
           keys.map(all.prefix + "/" + _)
     }
 
-    val badKeys = (1 to (keys.size / 10)).toList map (all.prefix + "/some/bad/random/artifact" + _.toString)
-    // get enough keys for the run
+    val badKeys = (1 to (keys.size / 1000)).toList map (all.prefix + "/some/bad/random/artifact" + _.toString)
+    //val badKeys = List.empty[String]
     var keyList = Stream.continually(Random.shuffle(keys ++ badKeys).toStream).flatten.take(totalRequests).toList
 
 
