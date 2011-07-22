@@ -474,7 +474,7 @@ class Client(repoServiceFactory: => Service[HttpRequest, HttpResponse], s3Servic
       log.warning("%s: service was unavailable", msg)
       val newSvc = fact
       if (ref.compareAndSet(svc, newSvc)) {
-        log.warning("%s: cas-ed new service for, releasing old one", msg)
+        log.warning("%s: cas-ed new service, releasing old one", msg)
         svc.release()
         newSvc
       } else {

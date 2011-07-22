@@ -13,7 +13,7 @@ import org.joda.time.{DateTimeZone, DateTime}
 import com.twitter.logging.Logger
 import org.jboss.netty.handler.codec.http._
 import com.twitter.util.Future
-import com.twitter.finagle.{TimedoutRequestException, CancelledRequestException, Service}
+import com.twitter.finagle.{WriteException, TimedoutRequestException, CancelledRequestException, Service}
 
 package object s3pository {
 
@@ -88,6 +88,11 @@ package object s3pository {
         case eex: CancelledRequestException => {
           log.debug("Recieved an expected exception type, nothing to see here")
           log.debug(eex, id + " " + msg, items: _*)
+          otherwise
+        }
+        case wex:WriteException => {
+          log.warning(id + " " + msg + ":" + wex.toString, items: _*)
+          log.debug(wex, id + " " + msg, items: _*)
           otherwise
         }
         case ex@_ => {
