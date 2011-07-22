@@ -356,6 +356,8 @@ object ProxyService {
       .name(name)
     if (ssl) (builder = builder.tlsWithoutValidation())
     builder.build()
+
+
   }
 
   /*get the keys in an s3bucket, s3 only returns up to 1000 at a time so this can be called recursively*/

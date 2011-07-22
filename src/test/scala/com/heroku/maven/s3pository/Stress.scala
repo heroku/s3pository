@@ -6,6 +6,7 @@ import com.heroku.maven.s3pository.ProxyService._
 import java.util.concurrent.atomic.AtomicInteger
 import com.twitter.finagle.stats.SummarizingStatsReceiver
 import com.twitter.finagle.Service
+import com.twitter.conversions.time._
 import com.twitter.finagle.builder.ClientBuilder
 import com.twitter.finagle.http.Http
 import java.net.{InetSocketAddress, URI}
@@ -71,6 +72,8 @@ object Stress {
       .hosts(new InetSocketAddress(uri.getHost, uri.getPort))
       .hostConnectionCoresize(concurrency)
       .reportTo(statsReceiver)
+      .tcpConnectTimeout(1.second)
+      .requestTimeout(5.seconds)
       .retries(3)
       .hostConnectionLimit(concurrency)
       .build()
