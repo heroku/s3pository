@@ -356,7 +356,6 @@ object ProxyService {
       .name(name)
     if (ssl) (builder = builder.tlsWithoutValidation())
     builder.build()
-    //new FailureAccrualFactoryIgnoreCancelled(builder.buildFactory(), 10, 240.seconds)
   }
 
   /*get the keys in an s3bucket, s3 only returns up to 1000 at a time so this can be called recursively*/
@@ -379,70 +378,6 @@ object ProxyService {
   }
 
 
-}
-
-
-class FailureAccrualFactoryIgnoreCancelled[Req, Rep](
-                                                      underlying: ServiceFactory[Req, Rep],
-                                                      numFailures: Int,
-                                                      markDeadFor: Duration)
-  extends ServiceFactory[Req, Rep] {
-  private[this] var failureCount = 0
-  private[this] var failedAt = Time.epoch
-
-  private[this] def didFail() = synchronized {
-    failureCount += 1
-    if (failureCount >= numFailures)
-      failedAt = Time.now
-  }
-
-  private[this] def didSucceed() = synchronized {
-    failureCount = 0
-    failedAt = Time.epoch
-  }
-
-  def make() =
-    underlying.make() map {
-      service =>
-        new Service[Req, Rep] {
-          def apply(request: Req) = {
-            val result = service(request)
-            result respond {
-              case Throw(t: TooManyConcurrentRequestsException) => log.debug("respond Ignore Throw(TooManyConcurrentRequestsException)")
-              case Throw(x: Exception) => {
-                log.warning("accruing failure for %s", x.getClass.getSimpleName)
-                didFail()
-              }
-              case Return(_) => didSucceed()
-            }
-            result
-          }
-
-          override def release() = service.release()
-
-          override def isAvailable =
-            service.isAvailable && FailureAccrualFactoryIgnoreCancelled.this.isAvailable
-        }
-    } onFailure {
-      ex =>
-        ex match {
-          case t: TooManyConcurrentRequestsException => log.debug("Ignore Throw(TooManyConcurrentRequestsException)")
-          case x: Exception => {
-            log.warning("accruing failure for %s", x.getClass.getSimpleName)
-            didFail()
-          }
-        }
-
-    }
-
-  override def isAvailable =
-    underlying.isAvailable && synchronized {
-      failedAt.untilNow >= markDeadFor
-    }
-
-  override def close() = underlying.close()
-
-  override val toString = "failure_accrual_%s".format(underlying.toString)
 }
 
 case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String, port: Int = 80, ssl: Boolean = false) {
