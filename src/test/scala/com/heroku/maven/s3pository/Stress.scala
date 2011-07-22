@@ -7,6 +7,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import com.twitter.finagle.stats.SummarizingStatsReceiver
 import com.twitter.finagle.Service
 import com.twitter.conversions.time._
+import com.twitter.conversions.storage._
 import com.twitter.finagle.builder.ClientBuilder
 import com.twitter.finagle.http.Http
 import java.net.{InetSocketAddress, URI}
@@ -68,7 +69,8 @@ object Stress {
     val statsReceiver = new SummarizingStatsReceiver
 
     val client: Service[HttpRequest, HttpResponse] = ClientBuilder()
-      .codec(Http())
+      .codec(Http(_maxResponseSize = 100.megabytes))
+      .recvBufferSize(256.kilobytes.##)
       .hosts(new InetSocketAddress(uri.getHost, uri.getPort))
       .hostConnectionCoresize(concurrency)
       .reportTo(statsReceiver)
@@ -103,6 +105,7 @@ object Stress {
         } handle {
           case e =>
             errors.incrementAndGet()
+            println(e.toString)
         } ensure {
           completedRequests.incrementAndGet()
         }
