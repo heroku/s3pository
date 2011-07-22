@@ -5,7 +5,6 @@ import com.twitter.util.Future
 import com.twitter.conversions.storage._
 import com.twitter.finagle.builder.ServerBuilder
 import com.twitter.finagle.{Service, SimpleFilter}
-import com.twitter.finagle.stats.SummarizingStatsReceiver
 import com.twitter.finagle.http.Http
 import com.twitter.logging.Logger
 import com.twitter.logging.config.{ConsoleHandlerConfig, LoggerConfig}
@@ -17,8 +16,7 @@ import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
 import org.jboss.netty.buffer.ChannelBuffers
 
 import util.Properties
-
-
+import com.twitter.finagle.stats.{NullStatsReceiver, SummarizingStatsReceiver}
 
 
 object S3rver {
@@ -76,10 +74,12 @@ object S3rver {
     val log = Logger.get("S3Server-Main")
     log.warning("Starting S3rver")
 
-    implicit val stats = new SummarizingStatsReceiver
+    implicit val stats = NullStatsReceiver
+    //implicit val stats = new SummarizingStatsReceiver
 
     /*Build the Service*/
-    val service = new Stats(stats) andThen new ProxyService(proxies, List(all))
+    val service = new ProxyService(proxies, List(all))
+    //val service = new Stats(stats) andThen new ProxyService(proxies, List(all))
 
 
 
