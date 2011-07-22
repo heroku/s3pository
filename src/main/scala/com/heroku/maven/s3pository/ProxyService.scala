@@ -350,6 +350,7 @@ object ProxyService {
       .hostConnectionMaxIdleTime(5.seconds)
       .retries(1)
       .requestTimeout(5.seconds)
+      .tcpConnectTimeout(1.second)
       //.failureAccrualParams(2, 60.seconds)
       .reportTo(stats)
       .name(name)
