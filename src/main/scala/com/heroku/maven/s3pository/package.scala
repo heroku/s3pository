@@ -92,9 +92,14 @@ package object s3pository {
         }
         case wex: WriteException => {
           wex.getCause match {
-            case eex: CancelledRequestException => {
+            case cre@CancelledRequestException => {
               log.debug("Recieved an expected exception type, nothing to see here")
-              log.debug(eex, id + " " + msg, items: _*)
+              log.debug(cre, id + " " + msg, items: _*)
+              otherwise
+            }
+            case cce@CancelledConnectionException => {
+              log.debug("Recieved an expected exception type, nothing to see here")
+              log.debug(cce, id + " " + msg, items: _*)
               otherwise
             }
             case _ => {
