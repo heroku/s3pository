@@ -75,7 +75,7 @@ object Stress {
       .hostConnectionCoresize(concurrency)
       .reportTo(statsReceiver)
       .tcpConnectTimeout(1.second)
-      .requestTimeout(5.seconds)
+      .requestTimeout(10.seconds)
       .retries(3)
       .hostConnectionLimit(concurrency)
       .build()
