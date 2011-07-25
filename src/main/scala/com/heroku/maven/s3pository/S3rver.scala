@@ -32,7 +32,7 @@ object S3rver {
     ProxiedRepository("/force-milestones",      "repo.t.salesforce.com",                  "/archiva/repository/snapshots",        "sclasen-proxy-force-snapshots"),
     ProxiedRepository("/datanucleus",           "www.datanucleus.org",                    "/downloads/maven2",                    "sclasen-proxy-datanucleus"),
     ProxiedRepository("/typesafe-releases",     "repo.typesafe.com",                      "/typesafe/maven-releases",             "sclasen-proxy-typesafe-releases"),
-    ProxiedRepository("/typesafe-releases",     "repo.typesafe.com",                      "/typesafe/ivy-releases",               "sclasen-proxy-typesafe-ivy-releases"),
+    ProxiedRepository("/typesafe-releases-ivy", "repo.typesafe.com",                      "/typesafe/ivy-releases",               "sclasen-proxy-typesafe-ivy-releases"),
     ProxiedRepository("/typesafe-snapshots",    "repo.typesafe.com",                      "/typesafe/maven-snapshots",            "sclasen-proxy-typesafe-snapshots"),
     ProxiedRepository("/scala-tools-releases",  "scala-tools.org",                        "/repo-releases",                       "sclasen-proxy-scalatools-releases"),
     ProxiedRepository("/scala-tools-snapshots", "scala-tools.org",                        "/repo-snapshots",                      "sclasen-proxy-scalatools-snapshots"),
