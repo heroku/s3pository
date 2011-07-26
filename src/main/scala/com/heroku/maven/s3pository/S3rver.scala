@@ -93,6 +93,7 @@ object S3rver {
       .bindTo(address)
       .sendBufferSize(262144)
       .recvBufferSize(262144)
+      .maxConcurrentRequests(64)
       .reportTo(stats)
       .name("s3pository")
       .build(service)
