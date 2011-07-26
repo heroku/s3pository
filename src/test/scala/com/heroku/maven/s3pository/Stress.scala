@@ -58,7 +58,7 @@ object Stress {
           keys.map(all.prefix + "/" + _)
     }
 
-    val badKeys = (1 to (keys.size / 1000)).toList map (all.prefix + "/some/bad/random/artifact" + _.toString)
+    val badKeys = (1 to (keys.size / 100)).toList map (all.prefix + "/some/bad/random/artifact" + _.toString)
     //val badKeys = List.empty[String]
     var keyList = Stream.continually(Random.shuffle(keys ++ badKeys).toStream).flatten.take(totalRequests).toList
 
@@ -75,7 +75,7 @@ object Stress {
       .hostConnectionCoresize(concurrency)
       .reportTo(statsReceiver)
       .tcpConnectTimeout(1.second)
-      .requestTimeout(10.seconds)
+      .requestTimeout(30.seconds)
       .retries(3)
       .hostConnectionLimit(concurrency)
       .build()
