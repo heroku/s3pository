@@ -22,7 +22,7 @@ import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
 
 import xml.XML
 import annotation.implicitNotFound
-import com.twitter.finagle.{TooManyConcurrentRequestsException, ServiceFactory, Service}
+import com.twitter.finagle.Service
 import com.twitter.finagle.stats.StatsReceiver
 import java.util.concurrent.atomic.AtomicReference
 
@@ -48,7 +48,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   val clients: HashMap[String, Client] = {
     repositories.foldLeft(new HashMap[String, Client]) {
       (m, repo) => {
-        m + (repo.prefix -> new Client(clientService(repo.host, repo.port, repo.ssl, "source of:" + repo.bucket), clientService(repo.bucket + ".s3.amazonaws.com", 80, false, "s3 client for:" + repo.bucket), repo))
+        m + (repo.prefix -> new Client(clientService(repo.host, repo.port, repo.ssl, "source of:" + repo.bucket, 4.seconds, 16.seconds), clientService(repo.bucket + ".s3.amazonaws.com", 80, false, "s3 client for:" + repo.bucket), repo))
       }
     }
   }
@@ -158,8 +158,8 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       repo => {
         val client = clients.get(repo.prefix).get
         log.debug("parallel request for %s to %s", contentUri, repo.host)
-        /*clone the request and send to the proxied repo that will timeout and return a 504 after 6 seconds*/
-        singleRepoRequest(client, contentUri, cloneRequest(request)).within(timer, 6.seconds).handle {
+        /*clone the request and send to the proxied repo that will timeout and return a 504 after 30 seconds*/
+        singleRepoRequest(client, contentUri, cloneRequest(request)).within(timer, 30.seconds).handle {
           case _: TimeoutException => {
             log.warning("timeout in parallel req to %s for %s", client.repo.host, contentUri)
             timeout
@@ -339,7 +339,7 @@ object ProxyService {
   }
 
   /*Build a Client ServiceFactory for the given endpoint*/
-  def clientService(host: String, port: Int, ssl: Boolean, name: String)(implicit stats: StatsReceiver): Service[HttpRequest, HttpResponse] = {
+  def clientService(host: String, port: Int, ssl: Boolean, name: String, connectTimeout: Duration = 2.second, requestTimeout: Duration = 8.seconds)(implicit stats: StatsReceiver): Service[HttpRequest, HttpResponse] = {
     import com.twitter.conversions.storage._
     var builder = ClientBuilder()
       .codec(Http(_maxRequestSize = 100.megabytes, _maxResponseSize = 100.megabyte))
@@ -349,8 +349,8 @@ object ProxyService {
       .hostConnectionLimit(Integer.MAX_VALUE)
       .hostConnectionMaxIdleTime(5.seconds)
       .retries(1)
-      .requestTimeout(5.seconds)
-      .tcpConnectTimeout(1.second)
+      .requestTimeout(requestTimeout)
+      .tcpConnectTimeout(connectTimeout)
       //.failureAccrualParams(2, 60.seconds)
       .reportTo(stats)
       .name(name)
