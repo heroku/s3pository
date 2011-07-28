@@ -213,7 +213,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   @Trace
   def singleRepoRequest(client: Client, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
     if (client.repo.includes.size > 0 && skip(client.repo.includes, contentUri)) {
-      log.debug("Skip looking for %s in %s / %s", contentUri, client.repo.bucket, client.repo.host)
+      log.info("Skip looking for %s in %s / %s", contentUri, client.repo.bucket, client.repo.host)
       Future.value(notFound)
     }
     val s3request = get(contentUri).s3headers(client.repo.bucket)
@@ -256,7 +256,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   }
 
   @tailrec
-  private def skip(includes: List[String], contentUri: String): Boolean = {
+  final def skip(includes: List[String], contentUri: String): Boolean = {
     includes.headOption match {
       case Some(include) if (contentUri.startsWith(include)) => false
       case None => true
@@ -391,6 +391,15 @@ object ProxyService {
       keys ++ getKeys(client, bucket, Some(keys.last))
     } else {
       keys
+    }
+  }
+
+  @tailrec
+  def skip(includes: List[String], contentUri: String): Boolean = {
+    includes.headOption match {
+      case Some(include) if (contentUri.startsWith(include)) => false
+      case None => true
+      case _ => skip(includes.tail, contentUri)
     }
   }
 
