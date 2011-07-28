@@ -214,7 +214,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   def singleRepoRequest(client: Client, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
     if (skipRepo(client.repo, contentUri)) {
       log.info("Skip looking for %s in %s / %s", contentUri, client.repo.bucket, client.repo.host)
-      Future.value(notFound)
+      return Future.value(notFound)
     }
     val s3request = get(contentUri).s3headers(client.repo.bucket)
     /*Check S3 cache first*/
