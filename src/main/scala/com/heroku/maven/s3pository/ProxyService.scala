@@ -12,7 +12,6 @@ import collection.immutable.HashMap
 import collection.mutable.{HashMap => MMap}
 import collection.JavaConversions._
 
-import java.lang.IllegalArgumentException
 import java.net.InetSocketAddress
 
 import org.joda.time.DateTime
@@ -25,6 +24,7 @@ import com.twitter.finagle.Service
 import com.twitter.finagle.stats.StatsReceiver
 import java.util.concurrent.atomic.AtomicReference
 import annotation.{tailrec, implicitNotFound}
+import java.lang.{Boolean, IllegalArgumentException}
 
 /*
 HTTP Service that acts as a caching proxy server for the configured ProxiedRepository(s) and RepositoryGroup(s).
@@ -212,7 +212,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   */
   @Trace
   def singleRepoRequest(client: Client, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
-    if (client.repo.includes.size > 0 && skip(client.repo.includes, contentUri)) {
+    if (skip(client.repo, contentUri)) {
       log.info("Skip looking for %s in %s / %s", contentUri, client.repo.bucket, client.repo.host)
       Future.value(notFound)
     }
@@ -392,6 +392,11 @@ object ProxyService {
     } else {
       keys
     }
+  }
+
+  def skip(repo:ProxiedRepository, contentUri:String):Boolean={
+    if(repo.includes.size == 0) false
+    else skip(repo.includes, contentUri)
   }
 
   @tailrec
