@@ -21,10 +21,10 @@ import org.jboss.netty.handler.codec.http._
 import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
 
 import xml.XML
-import annotation.implicitNotFound
 import com.twitter.finagle.Service
 import com.twitter.finagle.stats.StatsReceiver
 import java.util.concurrent.atomic.AtomicReference
+import annotation.{tailrec, implicitNotFound}
 
 /*
 HTTP Service that acts as a caching proxy server for the configured ProxiedRepository(s) and RepositoryGroup(s).
@@ -203,6 +203,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     }
   }
 
+
   /*
   Make a request to a single proxied repository
   This is called directly from requests to a prefix mapped to a ProxiedRepository, and also to get the response to
@@ -211,6 +212,10 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   */
   @Trace
   def singleRepoRequest(client: Client, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
+    if (client.repo.includes.size > 0 && skip(client.repo.includes, contentUri)) {
+      log.debug("Skip looking for %s in %s / %s", contentUri, client.repo.bucket, client.repo.host)
+      Future.value(notFound)
+    }
     val s3request = get(contentUri).s3headers(client.repo.bucket)
     /*Check S3 cache first*/
     client.s3Service.tryService(s3request, timeout, client.repo.bucket)("error checking s3 bucket %s for %s ", client.repo.bucket, contentUri).flatMap {
@@ -249,6 +254,16 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       }
     }
   }
+
+  @tailrec
+  private def skip(includes: List[String], contentUri: String): Boolean = {
+    includes.headOption match {
+      case Some(include) if (contentUri.startsWith(include)) => false
+      case None => true
+      case _ => skip(includes.tail, contentUri)
+    }
+  }
+
 
   /*Asynchronously put content to S3*/
   def putS3(client: Client, contentUri: String, response: HttpResponse, content: ChannelBuffer) {
@@ -372,7 +387,7 @@ object ProxyService {
     val keys = (xResp \\ "Contents" \\ "Key") map (_.text) toList
     val truncated = ((xResp \ "IsTruncated") map (_.text.toBoolean))
     log.info("Got %s keys for %s", keys.size.toString, bucket)
-    if (truncated.head) {
+    if (truncated.headOption.getOrElse(false)) {
       keys ++ getKeys(client, bucket, Some(keys.last))
     } else {
       keys
@@ -382,8 +397,10 @@ object ProxyService {
 
 }
 
-case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String, port: Int = 80, ssl: Boolean = false) {
+case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String, port: Int = 80, ssl: Boolean = false, includes: List[String] = List.empty[String]) {
   if (prefix.substring(1).contains("/")) throw new IllegalArgumentException("Prefix %s for Host %s Should not contain the / character, except as its first character".format(prefix, host))
+
+  def include(prefix: String) = this.copy(includes = (prefix :: this.includes))
 }
 
 case class RepositoryGroup(prefix: String, repos: List[ProxiedRepository]) {
