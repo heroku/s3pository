@@ -95,12 +95,12 @@ package object s3pository {
             //Workaround to the fa t that WriteException dosent expose the casue except in toString
             case x if (x.endsWith(classOf[CancelledRequestException].getSimpleName)) => {
               log.debug("Recieved an expected exception type, nothing to see here")
-              log.debug(cre, id + " " + msg, items: _*)
+              log.debug(wex, id + " " + msg, items: _*)
               otherwise
             }
             case x if (x.endsWith(classOf[CancelledConnectionException].getSimpleName)) => {
               log.debug("Recieved an expected exception type, nothing to see here")
-              log.debug(cce, id + " " + msg, items: _*)
+              log.debug(wex, id + " " + msg, items: _*)
               otherwise
             }
             case _ => {
