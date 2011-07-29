@@ -91,13 +91,14 @@ package object s3pository {
           otherwise
         }
         case wex: WriteException => {
-          wex.getCause match {
-            case cre:CancelledRequestException => {
+          wex.toString() match {
+            //Workaround to the fa t that WriteException dosent expose the casue except in toString
+            case x if (x.endsWith(classOf[CancelledRequestException].getSimpleName)) => {
               log.debug("Recieved an expected exception type, nothing to see here")
               log.debug(cre, id + " " + msg, items: _*)
               otherwise
             }
-            case cce:CancelledConnectionException => {
+            case x if (x.endsWith(classOf[CancelledConnectionException].getSimpleName)) => {
               log.debug("Recieved an expected exception type, nothing to see here")
               log.debug(cce, id + " " + msg, items: _*)
               otherwise
