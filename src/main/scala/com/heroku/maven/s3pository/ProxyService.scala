@@ -212,55 +212,47 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   */
   @Trace
   def singleRepoRequest(client: Client, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
-    if (skipRepo(client.repo, contentUri)) {
-      log.info("Skip looking for %s in %s / %s", contentUri, client.repo.bucket, client.repo.host)
-      return Future.value(notFound)
-    }
-    val s3request = get(contentUri).s3headers(client.repo.bucket)
-    /*Check S3 cache first*/
-    client.s3Service.tryService(s3request, timeout, client.repo.bucket)("error checking s3 bucket %s for %s ", client.repo.bucket, contentUri).flatMap {
-      s3response => {
-        s3response.getStatus.getCode match {
-          /*S3 has the content, return it*/
-          case code if (code == 200) => {
-            log.info("Serving from S3 bucket %s: %s", client.repo.bucket, contentUri)
-            Future.value(s3response)
-          }
-          /*content not in S3 or s3 not responding in time, try to get it from the source repo*/
-          case code if (code == 404 || code == 504) => {
-            val uri = client.repo.hostPath + contentUri
-            request.setUri(uri)
-            request.setHeader(HOST, client.repo.host)
-            client.repoService.tryService(request, timeout, client.repo.host)("error checking source repo %s for %s ", client.repo.host, contentUri).flatMap {
-              response => {
-                if (response.getStatus == HttpResponseStatus.OK && (request.getMethod equals HttpMethod.GET) && code == 404) {
-                  /*found the content in the source repo, do an async put of the content to S3*/
-                  log.info("Serving from Source %s: %s", client.repo.host, contentUri)
-                  val s3buffer = response.getContent.duplicate()
-                  putS3(client, contentUri, response, s3buffer)
-                } else {
-                  log.info("Request to Source repo %s: path: %s Status Code: %s", client.repo.host, request.getUri, response.getStatus.getCode)
+    if (client.repo.canContain(contentUri)) {
+      val s3request = get(contentUri).s3headers(client.repo.bucket)
+      /*Check S3 cache first*/
+      client.s3Service.tryService(s3request, timeout, client.repo.bucket)("error checking s3 bucket %s for %s ", client.repo.bucket, contentUri).flatMap {
+        s3response => {
+          s3response.getStatus.getCode match {
+            /*S3 has the content, return it*/
+            case code if (code == 200) => {
+              log.info("Serving from S3 bucket %s: %s", client.repo.bucket, contentUri)
+              Future.value(s3response)
+            }
+            /*content not in S3 or s3 not responding in time, try to get it from the source repo*/
+            case code if (code == 404 || code == 504) => {
+              val uri = client.repo.hostPath + contentUri
+              request.setUri(uri)
+              request.setHeader(HOST, client.repo.host)
+              client.repoService.tryService(request, timeout, client.repo.host)("error checking source repo %s for %s ", client.repo.host, contentUri).flatMap {
+                response => {
+                  if (response.getStatus == HttpResponseStatus.OK && (request.getMethod equals HttpMethod.GET) && code == 404) {
+                    /*found the content in the source repo, do an async put of the content to S3*/
+                    log.info("Serving from Source %s: %s", client.repo.host, contentUri)
+                    val s3buffer = response.getContent.duplicate()
+                    putS3(client, contentUri, response, s3buffer)
+                  } else {
+                    log.info("Request to Source repo %s: path: %s Status Code: %s", client.repo.host, request.getUri, response.getStatus.getCode)
+                  }
+                  Future.value(response)
                 }
-                Future.value(response)
               }
             }
-          }
-          case code@_ => {
-            log.error("Recieved code: %s", code)
-            log.error(s3response.getContent.toString("UTF-8"))
-            Future.value(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.INTERNAL_SERVER_ERROR))
+            case code@_ => {
+              log.error("Recieved code: %s", code)
+              log.error(s3response.getContent.toString("UTF-8"))
+              Future.value(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.INTERNAL_SERVER_ERROR))
+            }
           }
         }
       }
-    }
-  }
-
-  @tailrec
-  final def skip(includes: List[String], contentUri: String): Boolean = {
-    includes.headOption match {
-      case Some(include) if (contentUri.startsWith(include)) => false
-      case None => true
-      case _ => skip(includes.tail, contentUri)
+    } else {
+      log.info("Skip looking for %s in %s / %s", contentUri, client.repo.bucket, client.repo.host)
+      Future.value(notFound)
     }
   }
 
@@ -291,6 +283,10 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   /*get the prefix from the request URI. e.g. /someprefix/some/other/path returns /someprefix */
   def getPrefix(request: HttpRequest): String = {
     val uri = request.getUri.substring(1)
+    getPrefix(uri)
+  }
+
+  def getPrefix(uri: String): String = {
     val index = uri.indexOf("/")
     if (index != -1) {
       "/" + uri.substring(0, index)
@@ -298,6 +294,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       "unknown prefix"
     }
   }
+
 
   /*get the contentUri from the request URI. e.g. /someprefix/some/path/to/artifact returns /some/path/to/artifact */
   def getContentUri(prefix: String, source: String): String = {
@@ -394,27 +391,26 @@ object ProxyService {
     }
   }
 
-  def skipRepo(repo:ProxiedRepository, contentUri:String):Boolean={
-    if(repo.includes.size == 0) false
-    else skip(repo.includes, contentUri)
+}
+
+case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String, port: Int = 80, ssl: Boolean = false, _includes: List[String] = List.empty[String]) {
+  if (prefix.substring(1).contains("/")) throw new IllegalArgumentException("Prefix %s for Host %s Should not contain the / character, except as its first character".format(prefix, host))
+
+  def include(prefix: String) = this.copy(_includes = (prefix :: this._includes))
+
+  def canContain(contentUri: String): Boolean = {
+    if (_includes.size == 0) true
+    else !skip(_includes, contentUri)
   }
 
   @tailrec
-  def skip(includes: List[String], contentUri: String): Boolean = {
-    includes.headOption match {
+  private def skip(paths: List[String], contentUri: String): Boolean = {
+    paths.headOption match {
       case Some(include) if (contentUri.startsWith(include)) => false
       case None => true
-      case _ => skip(includes.tail, contentUri)
+      case _ => skip(paths.tail, contentUri)
     }
   }
-
-
-}
-
-case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String, port: Int = 80, ssl: Boolean = false, includes: List[String] = List.empty[String]) {
-  if (prefix.substring(1).contains("/")) throw new IllegalArgumentException("Prefix %s for Host %s Should not contain the / character, except as its first character".format(prefix, host))
-
-  def include(prefix: String) = this.copy(includes = (prefix :: this.includes))
 }
 
 case class RepositoryGroup(prefix: String, repos: List[ProxiedRepository]) {
