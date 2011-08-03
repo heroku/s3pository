@@ -31,6 +31,7 @@ object Switch {
     val response = client.service(request).get()
     println(response.getStatus.getReasonPhrase)
     println(response.getContent.toString("UTF-8"))
+    client.release()
   }
 
 }
