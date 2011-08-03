@@ -26,9 +26,11 @@ package object s3pository {
   val SOURCE_ETAG = "x-amz-meta-source-etag"
   val SOURCE_MOD = "x-amz-meta-source-mod"
   val COPY_SOURCE = "x-amz-copy-source"
+  val ACL = "x-amz-acl"
   val STORAGE_CLASS = "x-amz-storage-class"
   val VERSION = "x-amz-version-id"
-  val AMZN_HEADERS = List(SOURCE_ETAG, SOURCE_MOD, COPY_SOURCE, STORAGE_CLASS, VERSION)
+  //headers need to be in alphabetical order in this list
+  val AMZN_HEADERS = List(ACL, COPY_SOURCE, SOURCE_ETAG, SOURCE_MOD, STORAGE_CLASS, VERSION)
 
   val REPLACE = "REPLACE"
   val RRS = "REDUCED_REDUNDANCY"

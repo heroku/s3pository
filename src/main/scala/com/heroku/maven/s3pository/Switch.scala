@@ -27,15 +27,10 @@ object Switch {
   def doSwitch(from: String) {
     implicit val stats = NullStatsReceiver
     val client = clientService(bucket + ".s3.amazonaws.com", 80, false, "s3 client for:" + bucket)
-    val request = put(to).headers(Map(COPY_SOURCE -> ("/" + bucket + from))).s3headers(bucket)
+    val request = put(to).headers(Map(COPY_SOURCE -> ("/" + bucket + from), ACL -> "public-read")).s3headers(bucket)
     val response = client.service(request).get()
     println(response.getStatus.getReasonPhrase)
     println(response.getContent.toString("UTF-8"))
-    val verify = get(to).s3headers(bucket)
-    val vresp = client.service(verify).get()
-    println("Current %s".format(to))
-    println(vresp.getContent.toString("UTF-8"))
-    client.release()
   }
 
 }
