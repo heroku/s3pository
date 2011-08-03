@@ -125,6 +125,14 @@
                             <mainClass>com.heroku.maven.s3pository.S3Updater</mainClass>
                             <name>s3updater</name>
                         </program>
+                        <program>
+                            <mainClass>com.heroku.maven.s3pository.On</mainClass>
+                            <name>enable</name>
+                        </program>
+                        <program>
+                            <mainClass>com.heroku.maven.s3pository.Off</mainClass>
+                            <name>disable</name>
+                        </program>
                     </programs>
                 </configuration>
                 <executions>

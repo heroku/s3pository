@@ -25,9 +25,10 @@ package object s3pository {
   /*headers used by this app that need to be used in signing*/
   val SOURCE_ETAG = "x-amz-meta-source-etag"
   val SOURCE_MOD = "x-amz-meta-source-mod"
+  val COPY_SOURCE = "x-amz-copy-source"
   val STORAGE_CLASS = "x-amz-storage-class"
   val VERSION = "x-amz-version-id"
-  val AMZN_HEADERS = List(SOURCE_ETAG, SOURCE_MOD, STORAGE_CLASS, VERSION)
+  val AMZN_HEADERS = List(SOURCE_ETAG, SOURCE_MOD, COPY_SOURCE, STORAGE_CLASS, VERSION)
 
   val REPLACE = "REPLACE"
   val RRS = "REDUCED_REDUNDANCY"
