@@ -92,7 +92,7 @@ object S3Updater {
             if ((metaResp.getHeader(SOURCE_ETAG) ne null) || (metaResp.getHeader(SOURCE_MOD) ne null)) {
               /*s3 had a source etag or last mod*/
               /*do a head on the origin repo and compare*/
-              val sourceReq = head(proxy.hostPath + "/" + key).headers(Map(HOST -> proxy.host))
+              val sourceReq = head(proxy.hostPath + "/" + key).headers(HOST -> proxy.host)
               sourceClient(sourceReq).onFailure(log.error(_, "error checking source %s for %s", proxy.host, sourceReq.getUri)).flatMap {
                 sourceResp => {
                   if (sourceResp.getStatus.getCode == 200) {
@@ -158,11 +158,11 @@ object S3Updater {
         val s3del = delete(contentUri).s3headers(bucket)
         s3Client(s3del).onFailure(log.error(_, "error on DEL %s to update S3 bucket %s", s3del.getUri, bucket)).flatMap {
           delResp => {
-            val s3Put = put(contentUri).headers(Map(CONTENT_LENGTH -> response.getContent.readableBytes.toString,
+            val s3Put = put(contentUri).headers(CONTENT_LENGTH -> response.getContent.readableBytes.toString,
               CONTENT_TYPE -> response.getHeader(CONTENT_TYPE),
               STORAGE_CLASS -> RRS,
               HOST -> bucketHost(bucket),
-              DATE -> amzDate))
+              DATE -> amzDate)
             Option(response.getHeader(ETAG)).foreach(s3Put.setHeader(SOURCE_ETAG, _))
             Option(response.getHeader(LAST_MODIFIED)).foreach(s3Put.setHeader(SOURCE_MOD, _))
             s3Put.setContent(response.getContent)

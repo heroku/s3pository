@@ -85,7 +85,7 @@ object Stress {
     val requests = Future.parallel(concurrency) {
       Future.times(totalRequests / concurrency) {
         val key = keyList.head
-        val request = get(key).headers(Map(HOST -> uri.getHost))
+        val request = get(key).headers(HOST -> uri.getHost)
         //dont particularly care about thread safety
         println(key)
         keyList = keyList.tail

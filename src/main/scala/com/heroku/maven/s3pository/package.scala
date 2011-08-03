@@ -39,7 +39,7 @@ package object s3pository {
 
   class RichHttpRequest(val req: HttpRequest) {
 
-    def headers(headers: Map[String, String]): HttpRequest = {
+    def headers(headers: (String, String)*): HttpRequest = {
       headers.foreach(h => req.setHeader(h._1, h._2))
       req
     }
@@ -50,10 +50,10 @@ package object s3pository {
     }
 
     def s3headers(bucket: String)(implicit s3key: S3Key, s3secret: S3Secret): HttpRequest = {
-      headers(Map(HOST -> bucketHost(bucket), DATE -> amzDate)).sign(bucket)
+      headers(HOST -> bucketHost(bucket), DATE -> amzDate).sign(bucket)
     }
 
-    def query(query: Map[String, String]): HttpRequest = {
+    def query(query: (String,String)*): HttpRequest = {
       req.setUri(req.getUri + "?" + query.map(qp => (qp._1 + "=" + qp._2)).reduceLeft(_ + "&" + _))
       req
     }

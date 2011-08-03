@@ -78,7 +78,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   /*Create any missing S3 buckets. Create bucket is idempotent, and returns a 200 if the bucket exists or is created*/
   def createBucket(client: Client) {
     log.debug("creating bucket: %s".format(client.repo.bucket))
-    val s3request = put("/").headers(Map(HOST -> bucketHost(client.repo.bucket), DATE -> amzDate, CONTENT_LENGTH -> "0")).sign(client.repo.bucket)
+    val s3request = put("/").headers(HOST -> bucketHost(client.repo.bucket), DATE -> amzDate, CONTENT_LENGTH -> "0").sign(client.repo.bucket)
     client.s3Service.service(s3request) onSuccess {
       response =>
         if (response.getStatus.getCode != 200) {
@@ -259,8 +259,8 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
 
   /*Asynchronously put content to S3*/
   def putS3(client: Client, contentUri: String, response: HttpResponse, content: ChannelBuffer) {
-    val s3Put = put(contentUri).headers(Map(CONTENT_LENGTH -> content.readableBytes.toString, DATE -> amzDate,
-      CONTENT_TYPE -> response.getHeader(CONTENT_TYPE), STORAGE_CLASS -> RRS, HOST -> bucketHost(client.repo.bucket)))
+    val s3Put = put(contentUri).headers(CONTENT_LENGTH -> content.readableBytes.toString, DATE -> amzDate,
+      CONTENT_TYPE -> response.getHeader(CONTENT_TYPE), STORAGE_CLASS -> RRS, HOST -> bucketHost(client.repo.bucket))
     s3Put.setContent(content)
     response.ifHeader(ETAG)(s3Put.setHeader(SOURCE_ETAG, _))
     response.ifHeader(LAST_MODIFIED)(s3Put.setHeader(SOURCE_MOD, _))
@@ -375,7 +375,7 @@ object ProxyService {
   /*get the keys in an s3bucket, s3 only returns up to 1000 at a time so this can be called recursively*/
   def getKeys(client: Service[HttpRequest, HttpResponse], bucket: String, marker: Option[String] = None)(implicit s3key: S3Key, s3secret: S3Secret): List[String] = {
     val listRequest = get("/").s3headers(bucket)
-    marker.foreach(m => listRequest.query(Map("marker" -> m)))
+    marker.foreach(m => listRequest.query("marker" -> m))
     val listResp = client(listRequest).onFailure(log.error(_, "error getting keys for bucket %s marker %s", bucket, marker)).get()
     val respStr = listResp.getContent.toString("UTF-8")
     log.debug(respStr)
