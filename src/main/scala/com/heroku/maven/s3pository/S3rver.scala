@@ -67,7 +67,7 @@ object S3rver {
     val logConf = new LoggerConfig {
       node = ""
       level = Logger.levelNames.get(Properties.envOrElse("LOG_LEVEL", "INFO"))
-      handlers = List(new ConsoleHandlerConfig/*, new NewRelicLogHandlerConfig*/)
+      handlers = List(new ConsoleHandlerConfig, new NewRelicLogHandlerConfig)
     }
     logConf.apply()
     val supressNettyWarning = new LoggerConfig {
@@ -78,8 +78,9 @@ object S3rver {
     val log = Logger.get("S3Server-Main")
     log.warning("Starting S3rver")
 
-    implicit val stats = NullStatsReceiver
+    //implicit val stats = NullStatsReceiver
     //implicit val stats = new SummarizingStatsReceiver
+    implicit val stats = NewRelicStatsReceiver
 
     /*Build the Service*/
     val service = new ProxyService(proxies, List(all))
