@@ -19,7 +19,7 @@
             <version>1.7.5</version>
             <scope>compile</scope>
         </dependency>
-         <dependency>
+        <dependency>
             <groupId>com.twitter</groupId>
             <artifactId>util-logging</artifactId>
             <version>1.10.4</version>
@@ -48,6 +48,11 @@
             <artifactId>newrelic-api</artifactId>
             <version>2.0.3</version>
         </dependency>
+        <dependency>
+            <groupId>io.blitz</groupId>
+            <artifactId>blitz-api-client</artifactId>
+            <version>0.1.2</version>
+        </dependency>
     </dependencies>
     <repositories>
         <repository>
@@ -60,7 +65,7 @@
             <name>Scala-Tools Maven2 Repository</name>
             <url>http://scala-tools.org/repo-releases/</url>
         </repository>
-         <repository>
+        <repository>
             <id>project.local</id>
             <name>project</name>
             <url>file:${project.basedir}</url>
@@ -121,7 +126,7 @@
                             <mainClass>com.heroku.maven.s3pository.S3rver</mainClass>
                             <name>s3rver</name>
                         </program>
-                         <program>
+                        <program>
                             <mainClass>com.heroku.maven.s3pository.S3Updater</mainClass>
                             <name>s3updater</name>
                         </program>
