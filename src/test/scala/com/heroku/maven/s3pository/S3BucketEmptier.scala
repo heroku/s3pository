@@ -31,11 +31,12 @@ object S3BucketEmptier {
     supressNettyWarning.apply()
     log.warning("Starting S3BucketEmptier")
     val s3Client = client("s3.amazonaws.com")
-    args foreach {
+    args.headOption foreach {
       bucket => {
         val keys = getKeys(s3Client,bucket)
-        val futures = keys map {
+        val futures = keys.filter(args.tail.size == 0 || contains(_, args.tail.toList)) map {
           key => {
+            println("Delete:"+key)
             val req = delete("/" + key).s3headers(bucket)
             s3Client(req)
           }

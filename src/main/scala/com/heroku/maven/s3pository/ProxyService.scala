@@ -219,18 +219,18 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
         s3response => {
           s3response.getStatus.getCode match {
             /*S3 has the content, return it*/
-            case code if (code == 200) => {
+            case code if (code == 200 && (!(s3response.getHeader(CONTENT_LENGTH).equals("0")))) => {
               log.info("Serving from S3 bucket %s: %s", client.repo.bucket, contentUri)
               Future.value(s3response)
             }
             /*content not in S3 or s3 not responding in time, try to get it from the source repo*/
-            case code if (code == 404 || code == 504) => {
+            case code if (code == 404 || code == 504 || (code == 200 && s3response.getHeader(CONTENT_LENGTH).equals("0"))) => {
               val uri = client.repo.hostPath + contentUri
               request.setUri(uri)
               request.setHeader(HOST, client.repo.host)
               client.repoService.tryService(request, timeout, client.repo.host)("error checking source repo %s for %s ", client.repo.host, contentUri).flatMap {
                 response => {
-                  if (response.getStatus == HttpResponseStatus.OK && (request.getMethod equals HttpMethod.GET) && code == 404) {
+                  if (response.getStatus == HttpResponseStatus.OK && (request.getMethod equals HttpMethod.GET) && (code == 404 || code == 200)) {
                     /*found the content in the source repo, do an async put of the content to S3*/
                     log.info("Serving from Source %s: %s", client.repo.host, contentUri)
                     val s3buffer = response.getContent.duplicate()
