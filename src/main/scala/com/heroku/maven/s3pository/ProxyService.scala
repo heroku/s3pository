@@ -218,13 +218,17 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       client.s3Service.tryService(s3request, timeout, client.repo.bucket)("error checking s3 bucket %s for %s ", client.repo.bucket, contentUri).flatMap {
         s3response => {
           s3response.getStatus.getCode match {
-            /*S3 has the content, return it*/
-            case code if (code == 200 && (!(s3response.getHeader(CONTENT_LENGTH).equals("0")))) => {
+            /*S3 has the content, return it */
+            case code if (code == 200 && s3response.hasContent) => {
               log.info("Serving from S3 bucket %s: %s", client.repo.bucket, contentUri)
               Future.value(s3response)
             }
             /*content not in S3 or s3 not responding in time, try to get it from the source repo*/
-            case code if (code == 404 || code == 504 || (code == 200 && s3response.getHeader(CONTENT_LENGTH).equals("0"))) => {
+            /*
+            200s with no content can happen in strange cases like an object whose key starts
+            with 'soap/' will return a 200 with no content even though there is no object there
+            */
+            case code if (code == 404 || code == 504 || (code == 200 && s3response.hasNoContent)) => {
               val uri = client.repo.hostPath + contentUri
               request.setUri(uri)
               request.setHeader(HOST, client.repo.host)

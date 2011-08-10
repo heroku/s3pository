@@ -80,6 +80,12 @@ package object s3pository {
       resp.header(name).foreach(f(_))
     }
 
+    def hasContent:Boolean = ! hasNoContent
+
+    def hasNoContent:Boolean = {
+      "0".equals(resp.getHeader(CONTENT_LENGTH))
+    }
+
   }
 
   implicit def respToRichResp(resp: HttpResponse): RichHttpResponse = new RichHttpResponse(resp)
