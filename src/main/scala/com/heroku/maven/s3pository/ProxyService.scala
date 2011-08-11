@@ -172,14 +172,14 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       }
     }
 
-    Future.value(firstAcceptableResponse(requests)(group, contentUri))
+    Future.value(firstAcceptableResponse(requests)(group, contentUri, notFound))
 
   }
 
   /*
   return the fisrt acceptable response (200) from the list of requests.
   */
-  def firstAcceptableResponse(requests: Seq[Future[(HttpResponse, Client)]])(implicit group: RepositoryGroup, contentUri: String): HttpResponse = {
+  def firstAcceptableResponse(requests: Seq[Future[(HttpResponse, Client)]])(implicit group: RepositoryGroup, contentUri: String, fallbackResponse: HttpResponse): HttpResponse = {
     requests.headOption match {
       case Some(_) => {
         val (first, rest) = Future.select(requests).get()
@@ -191,6 +191,8 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
             group.hits += (contentUri -> client.repo)
             rest.foreach(_.cancel())
             response
+          } else if(response.getStatus.getCode == 504){
+            firstAcceptableResponse(rest)(group, contentUri, timeout)
           } else {
             firstAcceptableResponse(rest)
           }
@@ -199,7 +201,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
           firstAcceptableResponse(rest)
         }
       }
-      case None => notFound
+      case None => fallbackResponse
     }
   }
 
