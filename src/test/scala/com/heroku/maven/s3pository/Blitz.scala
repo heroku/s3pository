@@ -50,7 +50,7 @@ object Blitz {
     val keyVar = new ListVariable(asJavaList(Random.shuffle(keys)))
     val vars = Map("key" -> keyVar)
     rush.setVariables(vars)
-    val intervals = List(new Interval(100, 100, 60))
+    val intervals = List(new Interval(100, 500, 60))
     rush.setPattern(new Pattern(asJavaList(intervals)))
     rush.addListener(new IRushListener {
       def onData(res: RushResult) = {
