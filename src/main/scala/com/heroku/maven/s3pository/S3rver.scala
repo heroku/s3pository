@@ -39,7 +39,8 @@ object S3rver {
     ProxiedRepository("/scala-tools-releases",  "scala-tools.org",                        "/repo-releases",                       "sclasen-proxy-scalatools-releases"),
     ProxiedRepository("/scala-tools-snapshots", "scala-tools.org",                        "/repo-snapshots",                      "sclasen-proxy-scalatools-snapshots"),
     ProxiedRepository("/databinder",            "databinder.net",                         "/repo",                                "sclasen-proxy-databinder").include("/org.scala-tools.sbt"),
-    ProxiedRepository("/twitter",               "maven.twttr.com",                        "",                                     "sclasen-proxy-twitter").include("/com/twitter")
+    ProxiedRepository("/twitter",               "maven.twttr.com",                        "",                                     "sclasen-proxy-twitter").include("/com/twitter"),
+    ProxiedRepository("/glassfish",             "download.java.net",                      "/maven/glassfish",                     "sclasen-proxy-glassfish").include("/org/glassfish")
   )
   /*Create the Groups*/
   val all = RepositoryGroup("/all", proxies)
