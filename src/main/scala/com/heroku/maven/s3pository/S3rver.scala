@@ -22,25 +22,31 @@ import com.twitter.finagle.stats.{NullStatsReceiver, SummarizingStatsReceiver}
 
 object S3rver {
 
+  val s3prefix = Properties.envOrNone("S3_PREFIX").getOrElse {
+		  System.out.println("S3_PREFIX env var not defined, exiting")
+		  System.exit(666)
+		  "noPrefix"
+	  }
+  
   /*Wire up the proxied repositories*/
   val proxies = List(/*proxy prefix          source repo host                          source repo path to m2 repo             S3 bucket to store cached content */
-    ProxiedRepository("/central",               "repo1.maven.org",                        "/maven2",                              "sclasen-proxy-central"),
-    ProxiedRepository("/spring-releases",       "maven.springframework.org",              "/release",                             "sclasen-proxy-spring-releases").include("/com/springsource").include("/org/springframework").include("/org/aspectj"),
-    ProxiedRepository("/spring-milestones",     "maven.springframework.org",              "/milestone",                           "sclasen-proxy-spring-milestones").include("/com/springsource").include("/org/springframework").include("/org/aspectj"),
-    ProxiedRepository("/spring-roo",            "spring-roo-repository.springsource.org", "/release",                             "sclasen-proxy-spring-roo").include("/org/springframework/roo"),
-    ProxiedRepository("/jboss",                 "repository.jboss.org",                   "/nexus/content/repositories/releases", "sclasen-proxy-jboss", 443, true).include("/jboss").include("/org/jboss").include("/javax/validation").include("/org/hibernate"),
-    ProxiedRepository("/sonatype-oss",          "oss.sonatype.org",                       "/content/repositories/snapshots",      "sclasen-proxy-sonatype-snapshots").include("/com/force"),
-    //ProxiedRepository("/force-releases",        "repo.t.salesforce.com",                  "/archiva/repository/releases",         "sclasen-proxy-force-releases"),
-    //ProxiedRepository("/force-milestones",      "repo.t.salesforce.com",                  "/archiva/repository/snapshots",        "sclasen-proxy-force-snapshots"),
-    ProxiedRepository("/datanucleus",           "www.datanucleus.org",                    "/downloads/maven2",                    "sclasen-proxy-datanucleus").include("/org/datanucleus").include("/javax/jdo"),
-    ProxiedRepository("/typesafe-releases",     "repo.typesafe.com",                      "/typesafe/maven-releases",             "sclasen-proxy-typesafe-releases").include("/com/typesafe"),
-    ProxiedRepository("/typesafe-releases-ivy", "repo.typesafe.com",                      "/typesafe/ivy-releases",               "sclasen-proxy-typesafe-ivy-releases").include("/com.typesafe.sbteclipse").include("/org.scala-tools.sbt"),
-    //ProxiedRepository("/typesafe-snapshots",    "repo.typesafe.com",                      "/typesafe/maven-snapshots",            "sclasen-proxy-typesafe-snapshots"),
-    ProxiedRepository("/scala-tools-releases",  "scala-tools.org",                        "/repo-releases",                       "sclasen-proxy-scalatools-releases"),
-    ProxiedRepository("/scala-tools-snapshots", "scala-tools.org",                        "/repo-snapshots",                      "sclasen-proxy-scalatools-snapshots"),
-    ProxiedRepository("/databinder",            "databinder.net",                         "/repo",                                "sclasen-proxy-databinder").include("/org.scala-tools.sbt"),
-    ProxiedRepository("/twitter",               "maven.twttr.com",                        "",                                     "sclasen-proxy-twitter").include("/com/twitter"),
-    ProxiedRepository("/glassfish",             "download.java.net",                      "/maven/glassfish",                     "sclasen-proxy-glassfish").include("/org/glassfish")
+    ProxiedRepository("/central",               "repo1.maven.org",                        "/maven2",                              s3prefix + "-proxy-central"),
+    ProxiedRepository("/spring-releases",       "maven.springframework.org",              "/release",                             s3prefix + "-proxy-spring-releases").include("/com/springsource").include("/org/springframework").include("/org/aspectj"),
+    ProxiedRepository("/spring-milestones",     "maven.springframework.org",              "/milestone",                           s3prefix + "-proxy-spring-milestones").include("/com/springsource").include("/org/springframework").include("/org/aspectj"),
+    ProxiedRepository("/spring-roo",            "spring-roo-repository.springsource.org", "/release",                             s3prefix + "-proxy-spring-roo").include("/org/springframework/roo"),
+    ProxiedRepository("/jboss",                 "repository.jboss.org",                   "/nexus/content/repositories/releases", s3prefix + "-proxy-jboss", 443, true).include("/jboss").include("/org/jboss").include("/javax/validation").include("/org/hibernate"),
+    ProxiedRepository("/sonatype-oss",          "oss.sonatype.org",                       "/content/repositories/snapshots",      s3prefix + "-proxy-sonatype-snapshots").include("/com/force"),
+    //ProxiedRepository("/force-releases",        "repo.t.salesforce.com",                  "/archiva/repository/releases",         s3prefix + "-proxy-force-releases"),
+    //ProxiedRepository("/force-milestones",      "repo.t.salesforce.com",                  "/archiva/repository/snapshots",        s3prefix + "-proxy-force-snapshots"),
+    ProxiedRepository("/datanucleus",           "www.datanucleus.org",                    "/downloads/maven2",                    s3prefix + "-proxy-datanucleus").include("/org/datanucleus").include("/javax/jdo"),
+    ProxiedRepository("/typesafe-releases",     "repo.typesafe.com",                      "/typesafe/maven-releases",             s3prefix + "-proxy-typesafe-releases").include("/com/typesafe"),
+    ProxiedRepository("/typesafe-releases-ivy", "repo.typesafe.com",                      "/typesafe/ivy-releases",               s3prefix + "-proxy-typesafe-ivy-releases").include("/com.typesafe.sbteclipse").include("/org.scala-tools.sbt"),
+    //ProxiedRepository("/typesafe-snapshots",    "repo.typesafe.com",                      "/typesafe/maven-snapshots",            s3prefix + "-proxy-typesafe-snapshots"),
+    ProxiedRepository("/scala-tools-releases",  "scala-tools.org",                        "/repo-releases",                       s3prefix + "-proxy-scalatools-releases"),
+    ProxiedRepository("/scala-tools-snapshots", "scala-tools.org",                        "/repo-snapshots",                      s3prefix + "-proxy-scalatools-snapshots"),
+    ProxiedRepository("/databinder",            "databinder.net",                         "/repo",                                s3prefix + "-proxy-databinder").include("/org.scala-tools.sbt"),
+    ProxiedRepository("/twitter",               "maven.twttr.com",                        "",                                     s3prefix + "-proxy-twitter").include("/com/twitter"),
+    ProxiedRepository("/glassfish",             "download.java.net",                      "/maven/glassfish",                     s3prefix + "-proxy-glassfish").include("/org/glassfish")
   )
   /*Create the Groups*/
   val all = RepositoryGroup("/all", proxies)
@@ -61,7 +67,6 @@ object S3rver {
       "noSecret"
     }
   }
-
 
   def main(args: Array[String]) {
     Logger.clearHandlers()
