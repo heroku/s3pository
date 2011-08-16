@@ -17,12 +17,18 @@ import util.{Random, Properties}
 object Blitz {
 
   def main(args: Array[String]) {
-    val user = Properties.envOrNone("BLITZ_API_USER").getOrElse{
+    val user = Properties.envOrNone("BLITZ_API_USER").getOrElse {
       println("No User")
       System.exit(666)
       "noUser"
     }
-    val key = Properties.envOrNone("BLITZ_API_KEY").getOrElse{
+    val key = Properties.envOrNone("BLITZ_API_KEY").getOrElse {
+      println("No KEy")
+      System.exit(666)
+      "noKey"
+    }
+
+    val host = Properties.envOrNone("BLITZ_HOSTNAME").getOrElse {
       println("No KEy")
       System.exit(666)
       "noKey"
@@ -44,19 +50,19 @@ object Blitz {
     listClient.release()
 
     val rush = new Rush(user, key)
-    rush.setUrl(new URL("http://maven-s3pository.herokuapp.com/all/#{key}"))
+    rush.setUrl(new URL("http://" + host + "/" + all.prefix + "/#{key}"))
     rush.setTimeout(5000)
     rush.setRegion("virginia")
     val keyVar = new ListVariable(asJavaList(Random.shuffle(keys)))
     val vars = Map("key" -> keyVar)
     rush.setVariables(vars)
-    val intervals = List(new Interval(100, 100, 60))
+    val intervals = List(new Interval(100, 500, 60))
     rush.setPattern(new Pattern(asJavaList(intervals)))
     rush.addListener(new IRushListener {
       def onData(res: RushResult) = {
         println("success")
 
-        res.getTimeline.foreach{
+        res.getTimeline.foreach {
           p =>
             printf("""
              |  Duration: %s
@@ -67,7 +73,7 @@ object Blitz {
              |  Volume: %d
              |  Bytes Rec: %d
              |
-             """, p.getDuration.toString, p.getHits,p.getErrors,p.getTimeouts,p.getTotal,p.getVolume,p.getRxBytes)
+             """, p.getDuration.toString, p.getHits, p.getErrors, p.getTimeouts, p.getTotal, p.getVolume, p.getRxBytes)
         }
         true
       }

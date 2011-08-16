@@ -93,7 +93,7 @@ object Stress {
         client(request
         ) onSuccess {
           response =>
-            println("onSuccess")
+            println("onSuccess:"+response.getStatus.getCode)
             responses(response.getStatus).incrementAndGet()
             if (response.getStatus.getCode == 200) {
               val devnull = new File("/dev/null")
