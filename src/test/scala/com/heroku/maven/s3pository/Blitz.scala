@@ -50,7 +50,7 @@ object Blitz {
     listClient.release()
 
     val rush = new Rush(user, key)
-    rush.setUrl(new URL("http://" + host + "/all/#{key}"))
+    rush.setUrl(new URL("http://" + host + "/" + all.prefix + "/#{key}"))
     rush.setTimeout(5000)
     rush.setRegion("virginia")
     val keyVar = new ListVariable(asJavaList(Random.shuffle(keys)))
