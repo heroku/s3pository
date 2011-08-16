@@ -60,5 +60,15 @@
   | mirror, to be used as an alternate download site. The mirror site will be the preferred
   | server for that mirror.
   |-->
-
+  <profiles>
+    <profile>
+      <id>defaultProfile</id>
+      <activation>
+          <activeByDefault>true</activeByDefault>
+      </activation>
+      <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+      </properties>
+    </profile>
+  </profiles>
 </settings>

@@ -55,8 +55,6 @@ object Update {
 			  CONTENT_TYPE -> "application/xml").s3headers(bucket)
 	  s3put.setContent(content)
 	  val response = client.service(s3put).get()
-	  println(s3put.toString)
-	  println("")
 	  println(response.toString)
 	  println(response.getContent.toString("UTF-8"))
 	  client.release()    
