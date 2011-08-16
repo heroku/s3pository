@@ -6,3 +6,4 @@ blitz: mvn exec:java -Dexec.mainClass=com.heroku.maven.s3pository.Blitz -Dexec.c
 load: mvn exec:java -Dexec.mainClass=com.heroku.maven.s3pository.Stress -Dexec.classpathScope=test -Dexec.args='http://s3pository.herokuapp.com:80/ 4 64000'
 disable: sh target/bin/disable
 enable: sh target/bin/enable
+updateSettings: sh target/bin/updateSettings

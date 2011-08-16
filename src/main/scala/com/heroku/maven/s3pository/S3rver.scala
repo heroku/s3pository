@@ -35,7 +35,7 @@ object S3rver {
     ProxiedRepository("/maven-scala-tools-releases",  "scala-tools.org",                        "/repo-releases",                       s3prefix + "-proxy-scalatools-releases"),
     ProxiedRepository("/maven-scala-tools-snapshots", "scala-tools.org",                        "/repo-snapshots",                      s3prefix + "-proxy-scalatools-snapshots"),
     ProxiedRepository("/ivy-databinder",              "databinder.net",                         "/repo",                                s3prefix + "-proxy-databinder").include("/org.scala-tools.sbt"),
-    ProxiedRepository("/maven-twitter",               "maven.twttr.com",                        "",                                     s3prefix + "-proxy-twitter").include("/com/twitter")
+    ProxiedRepository("/maven-twitter",               "maven.twttr.com",                        "",                                     s3prefix + "-proxy-twitter").include("/com/twitter"),
     ProxiedRepository("/maven-glassfish",             "download.java.net",                      "/maven/glassfish",                     s3prefix + "-proxy-glassfish").include("/org/glassfish")
   )
   /*Create the Groups*/
