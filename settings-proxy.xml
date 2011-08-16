@@ -115,6 +115,12 @@
       <url>http://s3pository.heroku.com/jvm/</url>
       <name>DataNucleus_2</name>
     </mirror>
+    <mirror>
+      <mirrorOf>Glassfish</mirrorOf>
+      <id>Glassfish</id>
+      <url>http://s3pository.heroku.com/jvm/</url>
+      <name>Glassfish</name>
+    </mirror>
   </mirrors>
 
   <profiles>
