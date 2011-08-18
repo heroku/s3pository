@@ -61,8 +61,8 @@ object Update {
   }
   
   def main(args: Array[String]) {
-	  val settingsProxyBuffer = readFile("settings-proxy.xml");
-	  val settingsNoProxyBuffer = readFile("settings-noproxy.xml")
+	  val settingsProxyBuffer = readFile("language-pack-java/settings-proxy.xml");
+	  val settingsNoProxyBuffer = readFile("language-pack-java/settings-noproxy.xml")
 	  putFile("/settings-proxy.xml", settingsProxyBuffer)
 	  putFile("/settings-noproxy.xml", settingsNoProxyBuffer)
   }
