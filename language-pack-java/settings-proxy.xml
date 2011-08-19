@@ -70,56 +70,56 @@
     <mirror>
       <id>centralMirror</id>
       <mirrorOf>central</mirrorOf>
-      <name>central</name>
+      <name>centralMirror</name>
       <url>http://s3pository.heroku.com/jvm/</url>
     </mirror>
     <mirror>
-      <id>spring-release</id>
+      <id>spring-releaseMirror</id>
       <mirrorOf>spring-release</mirrorOf>
       <name>Spring Maven Release Repository</name>
       <url>http://s3pository.heroku.com/jvm/</url>
     </mirror>
     <mirror>
-      <id>spring-milestone</id>
+      <id>spring-milestoneMirror</id>
       <mirrorOf>spring-milestone</mirrorOf>
       <name>Spring Maven Milestone Repository</name>
       <url>http://s3pository.heroku.com/jvm/</url>
     </mirror>
     <mirror>
       <id>spring-roo-mirror</id>
-      <mirrorOf>spring-roo-mirror</mirrorOf>
+      <mirrorOf>spring-roo</mirrorOf>
       <name>Spring Roo Repository</name>
       <url>http://s3pository.heroku.com/jvm/</url>
     </mirror>
     <mirror>
       <mirrorOf>JBoss Repo</mirrorOf>
-      <id>JBoss Repo</id>
+      <id>JBoss Repo Mirror</id>
       <url>http://s3pository.heroku.com/jvm/</url>
       <name>JBoss Repo</name>
     </mirror>
     <mirror>
       <mirrorOf>com.force.maven.snapshot</mirrorOf>
-      <id>com.force.maven.snapshot</id>
+      <id>com.force.maven.snapshot mirror</id>
       <url>http://s3pository.heroku.com/jvm/</url>
-      <name>com.force.maven.snapshot</name>
+      <name>com.force.maven.snapshot mirror</name>
     </mirror>
     <mirror>
       <mirrorOf>com.force.maven.release</mirrorOf>
-      <id>com.force.maven.release</id>
+      <id>com.force.maven.release mirror</id>
       <url>http://s3pository.heroku.com/jvm/</url>
-      <name>com.force.maven.release</name>
+      <name>com.force.maven.release mirror</name>
     </mirror>
     <mirror>
       <mirrorOf>DataNucleus_2</mirrorOf>
-      <id>DataNucleus_2</id>
+      <id>DataNucleus_2 mirror</id>
       <url>http://s3pository.heroku.com/jvm/</url>
-      <name>DataNucleus_2</name>
+      <name>DataNucleus_2 mirror</name>
     </mirror>
     <mirror>
       <mirrorOf>Glassfish</mirrorOf>
-      <id>Glassfish</id>
+      <id>Glassfish mirror</id>
       <url>http://s3pository.heroku.com/jvm/</url>
-      <name>Glassfish</name>
+      <name>Glassfish mirror</name>
     </mirror>
   </mirrors>
 
