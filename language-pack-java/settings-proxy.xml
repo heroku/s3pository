@@ -95,7 +95,7 @@
       <mirrorOf>JBoss Repo</mirrorOf>
       <id>JBoss Repo Mirror</id>
       <url>http://s3pository.heroku.com/jvm/</url>
-      <name>JBoss Repo</name>
+      <name>JBoss Repo Mirror</name>
     </mirror>
     <mirror>
       <mirrorOf>com.force.maven.snapshot</mirrorOf>

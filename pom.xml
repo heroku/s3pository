@@ -138,6 +138,14 @@
                             <mainClass>com.heroku.maven.s3pository.Off</mainClass>
                             <name>disable</name>
                         </program>
+                         <program>
+                            <mainClass>com.heroku.maven.s3pository.ScalaOn</mainClass>
+                            <name>enableScala</name>
+                        </program>
+                        <program>
+                            <mainClass>com.heroku.maven.s3pository.ScalaOff</mainClass>
+                            <name>disableScala</name>
+                        </program>
                         <program>
                             <mainClass>com.heroku.maven.s3pository.Update</mainClass>
                             <name>updateSettings</name>
