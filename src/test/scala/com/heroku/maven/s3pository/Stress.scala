@@ -31,7 +31,7 @@ object Stress {
   def main(args: Array[String]) {
     val uri = new URI(args(0))
     val concurrency = args(1).toInt
-    val totalRequests = args(2).toInt
+    //val totalRequests = args(2).toInt
 
     val errors = new AtomicInteger(0)
     val responses = MapMaker[HttpResponseStatus, AtomicInteger] {
@@ -54,15 +54,14 @@ object Stress {
       (l,p) =>
         val keys = getKeys(listClient, p.bucket)
         l ++
-          keys.map(p.prefix + "/" + _) ++
-          keys.map(all.prefix + "/" + _)
+          keys.map(p.prefix + "/" + _) /*++ keys.map(all.prefix + "/" + _)  */
     }
 
-    val badKeys = (1 to (keys.size / 100)).toList map (all.prefix + "/some/bad/random/artifact" + _.toString)
+    //val badKeys = (1 to (keys.size / 100)).toList map (all.prefix + "/some/bad/random/artifact" + _.toString)
     //val badKeys = List.empty[String]
-    var keyList = Stream.continually(Random.shuffle(keys ++ badKeys).toStream).flatten.take(totalRequests).toList
-
-
+    //var keyList = Stream.continually(Random.shuffle(keys ++ badKeys).toStream).flatten.take(totalRequests).toList
+    var keyList = keys
+    val totalRequests = keys.size
     listClient.release()
 
 
