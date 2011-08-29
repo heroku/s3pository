@@ -1,0 +1,6 @@
+<ivysettings>
+  <settings defaultResolver="s3pository"/>
+  <resolvers>
+    <ibiblio name="s3pository" root="http://s3pository.heroku.com/maven-central/" m2compatible="true" />
+  </resolvers>
+</ivysettings>

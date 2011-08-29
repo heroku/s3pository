@@ -137,12 +137,16 @@
                             <name>s3updater</name>
                         </program>
                         <program>
-                            <mainClass>com.heroku.maven.s3pository.On</mainClass>
-                            <name>enable</name>
+                            <mainClass>com.heroku.maven.s3pository.JavaOn</mainClass>
+                            <name>enableJava</name>
                         </program>
                         <program>
-                            <mainClass>com.heroku.maven.s3pository.Off</mainClass>
-                            <name>disable</name>
+                            <mainClass>com.heroku.maven.s3pository.JavaOff</mainClass>
+                            <name>disableJava</name>
+                        </program>
+                        <program>
+                            <mainClass>com.heroku.maven.s3pository.JavaUpdate</mainClass>
+                            <name>updateJavaSettings</name>
                         </program>
                          <program>
                             <mainClass>com.heroku.maven.s3pository.ScalaOn</mainClass>
@@ -153,9 +157,18 @@
                             <name>disableScala</name>
                         </program>
                         <program>
-                            <mainClass>com.heroku.maven.s3pository.Update</mainClass>
-                            <name>updateSettings</name>
+                            <mainClass>com.heroku.maven.s3pository.PlayOn</mainClass>
+                            <name>enablePlay</name>
                         </program>
+                        <program>
+                            <mainClass>com.heroku.maven.s3pository.PlayOff</mainClass>
+                            <name>disablePlay</name>
+                        </program>
+                        <program>
+                            <mainClass>com.heroku.maven.s3pository.PlayUpdate</mainClass>
+                            <name>updatePlaySettings</name>
+                        </program>
+                        
                     </programs>
                 </configuration>
                 <executions>

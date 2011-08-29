@@ -47,3 +47,4 @@ multiverse.log
 .*.swp
 akka-tutorials/akka-tutorial-pi-sbt/project/boot/
 doozer-*/dooz.log
+*.env
