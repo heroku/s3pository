@@ -50,9 +50,10 @@
             <scope>compile</scope>
         </dependency>
         <dependency>
-            <groupId>newrelic</groupId>
+            <groupId>newrelic.java-agent</groupId>
             <artifactId>newrelic-api</artifactId>
-            <version>2.0.3</version>
+            <version>2.0.4</version>
+            <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>io.blitz</groupId>
@@ -72,9 +73,11 @@
             <url>http://scala-tools.org/repo-releases/</url>
         </repository>
         <repository>
-            <id>project.local</id>
-            <name>project</name>
-            <url>file:${project.basedir}</url>
+            <id>download.newrelic.com</id>
+            <url>http://download.newrelic.com</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
         </repository>
     </repositories>
     <build>
@@ -148,7 +151,7 @@
                             <mainClass>com.heroku.maven.s3pository.JavaUpdate</mainClass>
                             <name>updateJavaSettings</name>
                         </program>
-                         <program>
+                        <program>
                             <mainClass>com.heroku.maven.s3pository.ScalaOn</mainClass>
                             <name>enableScala</name>
                         </program>
@@ -168,7 +171,7 @@
                             <mainClass>com.heroku.maven.s3pository.PlayUpdate</mainClass>
                             <name>updatePlaySettings</name>
                         </program>
-                        
+
                     </programs>
                 </configuration>
                 <executions>

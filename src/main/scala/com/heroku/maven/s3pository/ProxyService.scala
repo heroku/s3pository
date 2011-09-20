@@ -230,7 +230,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
             200s with no content can happen in strange cases like an object whose key starts
             with 'soap/' will return a 200 with no content even though there is no object there
             */
-            case code if (code == 404 || code == 504 || (code == 200 && s3response.hasNoContent)) => {
+            case code if (code == 404 || code == 504 || code == 500 || (code == 200 && s3response.hasNoContent)) => {
               val uri = client.repo.hostPath + contentUri
               request.setUri(uri)
               request.setHeader(HOST, client.repo.host)
