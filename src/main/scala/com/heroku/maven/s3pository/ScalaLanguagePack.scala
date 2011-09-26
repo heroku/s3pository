@@ -5,54 +5,47 @@ import com.heroku.maven.s3pository.ProxyService._
 import com.heroku.maven.s3pository.S3rver._
 
 object ScalaOn {
-  val from7 = "/sbt-0.7.7.boot.properties.proxy"
-  val from10 = "/sbt-0.10.1.boot.properties.proxy"
-  val plugin = "/Heroku-0.10.1.scala.proxy"
-  val conf = "/heroku-plugins-0.10.1.sbt.proxy"
+  val from11 = "/sbt-0.11.0.boot.properties.proxy"
+  val plugin = "/Heroku-0.11.0.scala.proxy"
+  val conf = "/heroku-plugins-0.11.0.sbt.proxy"
 
   def main(args: Array[String]) {
-    ScalaSwitch.doSwitch(from7, from10, plugin, conf)
+    ScalaSwitch.doSwitch(from11, plugin, conf)
   }
 }
 
 object ScalaOff {
-  val from7 = "/sbt-0.7.7.boot.properties.noproxy"
-  val from10 = "/sbt-0.10.1.boot.properties.noproxy"
-  val plugin = "/Heroku-0.10.1.scala.noproxy"
-  val conf = "/heroku-plugins-0.10.1.sbt.noproxy"
+  val from11 = "/sbt-0.11.0.boot.properties.noproxy"
+  val plugin = "/Heroku-0.11.0.scala.noproxy"
+  val conf = "/heroku-plugins-0.11.0.sbt.noproxy"
 
 
   def main(args: Array[String]) {
-    ScalaSwitch.doSwitch(from7, from10, plugin, conf)
+    ScalaSwitch.doSwitch(from11, plugin, conf)
   }
 }
 
 object ScalaSwitch {
   val bucket = s3prefix + "-langpack-scala"
-  val to7 = "/sbt-0.7.7.boot.properties"
-  val to10 = "/sbt-0.10.1.boot.properties"
-  val plug10 = "/Heroku-0.10.1.scala"
-  val conf10 = "/heroku-plugins-0.10.1.sbt"
+  val to11 = "/sbt-0.11.0.boot.properties"
+  val plug11 = "/Heroku-0.11.0.scala"
+  val conf11 = "/heroku-plugins-0.11.0.sbt"
 
-  def doSwitch(from7: String, from10: String, plugin10: String, plugConf10: String) {
+  def doSwitch(from11: String, plugin11: String, plugConf11: String) {
     implicit val stats = NullStatsReceiver
     val client = clientService(bucket + ".s3.amazonaws.com", 80, false, "s3 client for:" + bucket)
-    val request7 = put(to7).headers(COPY_SOURCE -> ("/" + bucket + from7), ACL -> "public-read").s3headers(bucket)
-    val response7 = client.service(request7).get()
-    val request10 = put(to10).headers(COPY_SOURCE -> ("/" + bucket + from10), ACL -> "public-read").s3headers(bucket)
-    val response10 = client.service(request10).get()
-    val requestPlugin10 = put(plug10).headers(COPY_SOURCE -> ("/" + bucket + plugin10), ACL -> "public-read").s3headers(bucket)
-    val responsePlugin10 = client.service(requestPlugin10).get()
-    val requestPlugConf10 = put(conf10).headers(COPY_SOURCE -> ("/" + bucket + plugConf10), ACL -> "public-read").s3headers(bucket)
-    val responsePlugConf10 = client.service(requestPlugConf10).get()
-    println(response7.getStatus.getReasonPhrase)
-    println(response7.getContent.toString("UTF-8"))
-    println(response10.getStatus.getReasonPhrase)
-    println(response10.getContent.toString("UTF-8"))
-    println(responsePlugin10.getStatus.getReasonPhrase)
-    println(responsePlugin10.getContent.toString("UTF-8"))
-    println(responsePlugConf10.getStatus.getReasonPhrase)
-    println(responsePlugConf10.getContent.toString("UTF-8"))
+    val request11 = put(to11).headers(COPY_SOURCE -> ("/" + bucket + from11), ACL -> "public-read").s3headers(bucket)
+    val response11 = client.service(request11).get()
+    val requestPlugin11 = put(plug11).headers(COPY_SOURCE -> ("/" + bucket + plugin11), ACL -> "public-read").s3headers(bucket)
+    val responsePlugin11 = client.service(requestPlugin11).get()
+    val requestPlugConf11 = put(conf11).headers(COPY_SOURCE -> ("/" + bucket + plugConf11), ACL -> "public-read").s3headers(bucket)
+    val responsePlugConf11 = client.service(requestPlugConf11).get()
+    println(response11.getStatus.getReasonPhrase)
+    println(response11.getContent.toString("UTF-8"))
+    println(responsePlugin11.getStatus.getReasonPhrase)
+    println(responsePlugin11.getContent.toString("UTF-8"))
+    println(responsePlugConf11.getStatus.getReasonPhrase)
+    println(responsePlugConf11.getContent.toString("UTF-8"))
     client.release()
   }
 
