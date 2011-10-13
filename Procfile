@@ -1,9 +1,7 @@
-web: sh target/bin/s3rver
-updater: sh target/bin/s3updater maven-metadata SNAPSHOT
-fullupdater: sh target/bin/s3updater
-stress: mvn exec:java -Dexec.mainClass=com.heroku.maven.s3pository.Stress -Dexec.classpathScope=test -Dexec.args='http://s3pository.heroku.com:80/ 4 640'
-blitz: mvn exec:java -Dexec.mainClass=com.heroku.maven.s3pository.Blitz -Dexec.classpathScope=test
-load: mvn exec:java -Dexec.mainClass=com.heroku.maven.s3pository.Stress -Dexec.classpathScope=test -Dexec.args='http://s3pository.heroku.com:80/ 4 64000'
-disable: sh target/bin/disableJava && sh target/bin/disableScala && sh target/bin/disablePlay
-enable: sh target/bin/enableJava && sh target/bin/enableScala && sh target/bin/enablePlay
-updateSettings: sh target/bin/updateJavaSettings && sh target/bin/updatePlaySettings
+web: target/start com.heroku.maven.s3pository.S3rver
+updater: target/start com.heroku.maven.s3pository.S3Updater maven-metadata SNAPSHOT
+fullupdater: target/start com.heroku.maven.s3pository.S3Updater
+stress: target/start com.heroku.maven.s3pository.Stress http://s3pository.heroku.com:80/ 4 640
+disable target/start com.heroku.maven.s3pository.JavaOff &&  target/start target/start com.heroku.maven.s3pository.ScalaOff target/start && target/start com.heroku.maven.s3pository.PlayOff
+enable: target/start com.heroku.maven.s3pository.JavaOn &&  target/start target/start com.heroku.maven.s3pository.ScalaOn target/start && target/start com.heroku.maven.s3pository.PlayOn
+updateSettings: target/start com.heroku.maven.s3pository.JavaUpdate &&  target/start com.heroku.maven.s3pository.PlayUpdate
