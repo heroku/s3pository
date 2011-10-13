@@ -40,33 +40,6 @@ object LangPackUpdate {
   }
 }
 
-object Off {
-
-  def main(args: Array[String]) {
-    JavaOff.main(args)
-    PlayOff.main(args)
-    ScalaOff.main(args)
-  }
-
-}
-
-object On {
-
-  def main(args: Array[String]) {
-    JavaOn.main(args)
-    PlayOn.main(args)
-    ScalaOn.main(args)
-  }
-
-}
-
-
-object Update {
-
-  def main(args: Array[String]) {
-    JavaUpdate.main(args)
-    PlayUpdate.main(args)
-  }
 
 }
 
