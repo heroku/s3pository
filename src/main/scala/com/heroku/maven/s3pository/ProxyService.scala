@@ -382,13 +382,16 @@ object ProxyService {
   def getKeys(client: Service[HttpRequest, HttpResponse], bucket: String, marker: Option[String] = None)(implicit s3key: S3Key, s3secret: S3Secret): List[String] = {
     val listRequest = get("/").s3headers(bucket)
     marker.foreach(m => listRequest.query("marker" -> m))
-    val listResp = client(listRequest).onFailure(log.error(_, "error getting keys for bucket %s marker %s", bucket, marker)).get()
-    val respStr = listResp.getContent.toString("UTF-8")
+    var listResp = client(listRequest).onFailure(log.error(_, "error getting keys for bucket %s marker %s", bucket, marker)).get()
+    var respStr = listResp.getContent.toString("UTF-8")
     log.debug(respStr)
-    val xResp = XML.loadString(respStr)
+    var xResp = XML.loadString(respStr)
 
     val keys = (xResp \\ "Contents" \\ "Key") map (_.text) toList
     val truncated = ((xResp \ "IsTruncated") map (_.text.toBoolean))
+    listResp = null
+    respStr = null
+    xResp = null
     log.info("Got %s keys for %s", keys.size.toString, bucket)
     if (truncated.headOption.getOrElse(false)) {
       keys ++ getKeys(client, bucket, Some(keys.last))
