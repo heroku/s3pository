@@ -37,7 +37,7 @@ will respond to a request for
 by making requests to
     http://source.repo.com/path/to/repo/some/artifact.ext
 */
-class ProxyService(repositories: List[ProxiedRepository], groups: List[RepositoryGroup])(implicit s3key: S3Key, s3secret: S3Secret, stats: StatsReceiver) extends Service[HttpRequest, HttpResponse] {
+class ProxyService(repositories: List[ProxiedRepository], groups: List[RepositoryGroup], doCachePrime: Boolean)(implicit s3key: S3Key, s3secret: S3Secret, stats: StatsReceiver) extends Service[HttpRequest, HttpResponse] {
 
   import ProxyService._
 
@@ -53,6 +53,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     }
   }
   /*create/verify all S3 buckets at creation time*/
+
   clients.values.foreach(createBucket(_))
   log.warning("S3 Buckets verified")
 
@@ -63,8 +64,10 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     }
   }
 
-  repositoryGroups.values.foreach(primeHitCaches(_))
-  log.warning("Hit Cache populated")
+  if (doCachePrime) {
+    repositoryGroups.values.foreach(primeHitCaches(_))
+    log.warning("Hit Cache populated")
+  }
 
   def primeHitCaches(group: RepositoryGroup) {
     group.repos.reverse.foreach {
@@ -191,7 +194,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
             group.hits += (contentUri -> client.repo)
             rest.foreach(_.cancel())
             response
-          } else if(response.getStatus.getCode == 504){
+          } else if (response.getStatus.getCode == 504) {
             firstAcceptableResponse(rest)(group, contentUri, timeout)
           } else {
             firstAcceptableResponse(rest)
