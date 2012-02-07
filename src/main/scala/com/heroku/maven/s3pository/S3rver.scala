@@ -32,8 +32,9 @@ object S3rver {
     ProxiedRepository("/maven-typesafe-releases", "repo.typesafe.com", "/typesafe/maven-releases", s3prefix + "-proxy-typesafe-releases").include("/com/typesafe"),
     ProxiedRepository("/ivy-typesafe-releases", "repo.typesafe.com", "/typesafe/ivy-releases", s3prefix + "-proxy-typesafe-ivy-releases").include("/com.typesafe").include("/org.scala-tools.sbt"),
     ProxiedRepository("/ivy-typesafe-snapshots", "repo.typesafe.com", "/typesafe/ivy-snapshots", s3prefix + "-proxy-typesafe-ivy-snapshots").include("/com.typesafe").include("/org.scala-tools.sbt"),
-    ProxiedRepository("/maven-scala-tools-releases", "scala-tools.org", "/repo-releases", s3prefix + "-proxy-scalatools-releases"),
-    ProxiedRepository("/maven-scala-tools-snapshots", "scala-tools.org", "/repo-snapshots", s3prefix + "-proxy-scalatools-snapshots"),
+    //since scala-tools is retired, we'll just point to the bucket as the "source" repo too
+    ProxiedRepository("/maven-scala-tools-releases", "s3.amazonaws.com", "/" + s3prefix + "-proxy-scalatools-releases", s3prefix + "-proxy-scalatools-releases"),
+    ProxiedRepository("/maven-scala-tools-snapshots", "s3.amazonaws.com", "/" + s3prefix + "-proxy-scalatools-snapshots", s3prefix + "-proxy-scalatools-snapshots"),
     ProxiedRepository("/ivy-databinder", "databinder.net", "/repo", s3prefix + "-proxy-databinder").include("/org.scala-tools.sbt"),
     ProxiedRepository("/maven-twitter", "maven.twttr.com", "", s3prefix + "-proxy-twitter").include("/com/twitter"),
     ProxiedRepository("/maven-glassfish", "download.java.net", "/maven/glassfish", s3prefix + "-proxy-glassfish").include("/org/glassfish")

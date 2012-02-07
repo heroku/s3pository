@@ -411,7 +411,8 @@ case class ProxiedRepository(prefix: String, host: String, hostPath: String, buc
   def include(prefix: String) = this.copy(_includes = (prefix :: this._includes))
 
   def canContain(contentUri: String): Boolean = {
-    if (_includes.size == 0) true
+    if(contentUri == "/") false
+    else if(_includes.size == 0) true
     else !skip(_includes, contentUri)
   }
 
