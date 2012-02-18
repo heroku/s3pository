@@ -1,4 +1,4 @@
-package com.heroku.maven
+package com.heroku
 
 import org.jboss.netty.handler.codec.http.HttpVersion._
 import org.jboss.netty.handler.codec.http.HttpMethod._

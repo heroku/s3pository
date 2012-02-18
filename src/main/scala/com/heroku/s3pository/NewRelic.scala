@@ -1,4 +1,4 @@
-package com.heroku.maven.s3pository
+package com.heroku.s3pository
 
 import java.util.{logging => javalog}
 import collection.JavaConversions._

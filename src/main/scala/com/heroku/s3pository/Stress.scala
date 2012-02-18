@@ -1,6 +1,6 @@
-package com.heroku.maven.s3pository
+package com.heroku.s3pository
 
-import com.heroku.maven.s3pository.S3rver._
+import com.heroku.s3pository.S3rver._
 
 import java.util.concurrent.atomic.AtomicInteger
 import com.twitter.finagle.stats.SummarizingStatsReceiver

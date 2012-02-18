@@ -1,4 +1,4 @@
-package com.heroku.maven.s3pository
+package com.heroku.s3pository
 
 
 import com.twitter.conversions.storage._

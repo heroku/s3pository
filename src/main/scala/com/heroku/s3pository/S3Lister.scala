@@ -1,7 +1,7 @@
-package com.heroku.maven.s3pository
+package com.heroku.s3pository
 
 
-import com.heroku.maven.s3pository.S3rver._
+import com.heroku.s3pository.S3rver._
 
 import com.twitter.finagle.Service
 import com.twitter.finagle.stats.SummarizingStatsReceiver

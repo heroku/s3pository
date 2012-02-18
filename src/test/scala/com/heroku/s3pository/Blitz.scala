@@ -1,6 +1,6 @@
-package com.heroku.maven.s3pository
+package com.heroku.s3pository
 
-import com.heroku.maven.s3pository.S3rver._
+import com.heroku.s3pository.S3rver._
 import io.blitz.curl.Rush
 import java.net.URL
 import io.blitz.curl.config.variable.ListVariable
