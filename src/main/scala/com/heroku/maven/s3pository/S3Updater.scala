@@ -4,21 +4,15 @@ import com.heroku.maven.s3pository.S3rver._
 import com.heroku.maven.s3pository.ProxyService._
 
 import com.twitter.logging.Logger
-import com.twitter.logging.config.{ConsoleHandlerConfig, LoggerConfig}
-import com.twitter.finagle.builder.ClientBuilder
-import com.twitter.finagle.http.Http
-import com.twitter.conversions.storage._
-import com.twitter.conversions.time._
 import com.twitter.finagle.Service
-import com.twitter.finagle.stats.SummarizingStatsReceiver
 import com.twitter.util.{Time, Future}
 
-import java.net.InetSocketAddress
 
 import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
 import org.jboss.netty.handler.codec.http._
+import com.heroku.finagle.aws._
+import com.twitter.finagle.stats.{NullStatsReceiver, SummarizingStatsReceiver}
 
-import util.Properties
 
 /*checks for updated artifacts in source repos*/
 object S3Updater {
@@ -28,26 +22,14 @@ object S3Updater {
   lazy val stats = new SummarizingStatsReceiver
 
   def main(args: Array[String]) {
-    Logger.clearHandlers()
-    val logConf = new LoggerConfig {
-      node = ""
-      level = Logger.levelNames.get(Properties.envOrElse("UPDATER_LOG_LEVEL", "INFO"))
-      handlers = List(new ConsoleHandlerConfig, new NewRelicLogHandlerConfig)
-    }
-    logConf.apply()
-    val supressNettyWarning = new LoggerConfig {
-      node = "org.jboss.netty.channel.SimpleChannelHandler"
-      level = Logger.ERROR
-    }
-    supressNettyWarning.apply()
+    configureLogging()
     log.warning("Starting Updater")
-    val s3Client = client("s3.amazonaws.com")
+    val s3Client = s3Service(s3key, s3secret, "updater", new NullStatsReceiver)
     val start = Time.now
     proxies foreach {
       proxy: ProxiedRepository => {
         val sourceClient = client(proxy)
-
-        val keys = getKeys(s3Client, proxy.bucket)
+        val keys = ListBucket.getKeys(s3Client, proxy.bucket)
         stats.counter("bucket", proxy.bucket, "totalkeys").incr(keys.size)
         //do in batches of 100 to keep queue depths and memory consumption down
         if (args.size > 0) log.info("filtering keys with " + args.mkString(" | "))
@@ -57,10 +39,7 @@ object S3Updater {
             doUpdate(s3Client, sourceClient, proxy, keygroup)
           }
         }
-
         sourceClient.release()
-
-
       }
     }
 
@@ -80,13 +59,12 @@ object S3Updater {
     }
   }
 
-  def doUpdate(s3Client: Client, sourceClient: Client, proxy: ProxiedRepository, keys: List[String]) {
+  def doUpdate(s3Client: S3.S3Client, sourceClient: Client, proxy: ProxiedRepository, keys: List[String]) {
     val futures: Seq[Future[HttpResponse]] = keys map {
       key => {
         /*get the orig last modified and or etag from s3, either or both can be null*/
-        val metaReq = head("/" + key).s3headers(proxy.bucket)
         log.debug("checking %s for %s", proxy.bucket, key)
-        val future = s3Client(metaReq).onFailure(log.error(_, "error getting s3 metadata for %s in %s", key, proxy.bucket))
+        val future = s3Client(Head(proxy.bucket, "/" + key)).onFailure(log.error(_, "error getting s3 metadata for %s in %s", key, proxy.bucket))
         future flatMap {
           metaResp => {
             if ((metaResp.getHeader(SOURCE_ETAG) ne null) || (metaResp.getHeader(SOURCE_MOD) ne null)) {
@@ -151,47 +129,24 @@ object S3Updater {
 
 
   /*do a get for the updated content, delete the existing s3 item and pipeline the get to a put of the updated content*/
-  def updateS3(sourceClient: Service[HttpRequest, HttpResponse], s3Client: Service[HttpRequest, HttpResponse], bucket: String, contentUri: String, req: HttpRequest): Future[HttpResponse] = {
+  def updateS3(sourceClient: Service[HttpRequest, HttpResponse], s3Client: Service[S3Request, HttpResponse], bucket: String, contentUri: String, req: HttpRequest): Future[HttpResponse] = {
     req.setMethod(HttpMethod.GET)
     sourceClient(req).onFailure(log.error(_, "error on GET %s to update S3 bucket %s", req.getUri, bucket)).flatMap {
       response =>
-        val s3del = delete(contentUri).s3headers(bucket)
-        s3Client(s3del).onFailure(log.error(_, "error on DEL %s to update S3 bucket %s", s3del.getUri, bucket)).flatMap {
+        s3Client(Delete(bucket, contentUri)).onFailure(log.error(_, "error on DEL %s to update S3 bucket %s", contentUri, bucket)).flatMap {
           delResp => {
-            val s3Put = put(contentUri).headers(CONTENT_LENGTH -> response.getContent.readableBytes.toString,
-              CONTENT_TYPE -> response.getHeader(CONTENT_TYPE),
-              STORAGE_CLASS -> RRS,
-              HOST -> bucketHost(bucket),
-              DATE -> amzDate)
+            val s3Put = Put(bucket, contentUri, response.getContent, CONTENT_TYPE -> response.getHeader(CONTENT_TYPE), STORAGE_CLASS -> RRS)
             Option(response.getHeader(ETAG)).foreach(s3Put.setHeader(SOURCE_ETAG, _))
             Option(response.getHeader(LAST_MODIFIED)).foreach(s3Put.setHeader(SOURCE_MOD, _))
-            s3Put.setContent(response.getContent)
-            s3Put.sign(bucket)
             s3Client(s3Put).onFailure(log.error(_, "error on  PUT %s to update S3 bucket %s", req.getUri, bucket))
           }
         }
-
     }
   }
 
   def client(repo: ProxiedRepository): Client = {
-    client(repo.host, repo.port, repo.ssl)
+    clientService(repo.host, repo.port, repo.ssl, "Updater", new NullStatsReceiver)
   }
 
-  def client(host: String, port: Int = 80, ssl: Boolean = false): Client = {
-    var builder = ClientBuilder()
-      .codec(Http(_maxRequestSize = 100.megabytes, _maxResponseSize = 100.megabyte))
-      .sendBufferSize(1048576)
-      .recvBufferSize(1048576)
-      .hosts(new InetSocketAddress(host, port))
-      .hostConnectionLimit(16)
-      .keepAlive(true)
-      .hostConnectionMaxWaiters(Integer.MAX_VALUE)
-      .requestTimeout(30.seconds)
-      .connectionTimeout(5.seconds)
-      .name(host)
-      .reportTo(stats)
-    if (ssl) (builder = builder.tlsWithoutValidation())
-    builder.build()
-  }
+
 }

@@ -2,15 +2,13 @@ package com.heroku.maven.s3pository
 
 import com.heroku.maven.s3pository.S3rver._
 import com.heroku.maven.s3pository.S3Updater._
-import com.heroku.maven.s3pository.ProxyService._
 import com.twitter.util.Future
 import com.twitter.logging.Logger
 import com.twitter.logging.config.{ConsoleHandlerConfig, LoggerConfig}
 
-import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
-
 
 import util.Properties
+import com.heroku.finagle.aws.{Delete, ListBucket, S3}
 
 object S3BucketEmptier {
 
@@ -30,15 +28,14 @@ object S3BucketEmptier {
     }
     supressNettyWarning.apply()
     log.warning("Starting S3BucketEmptier")
-    val s3Client = client("s3.amazonaws.com")
+    val s3Client = S3.client(s3key, s3secret)
     args.headOption foreach {
       bucket => {
-        val keys = getKeys(s3Client,bucket)
+        val keys = ListBucket.getKeys(s3Client, bucket)
         val futures = keys.filter(args.tail.size == 0 || contains(_, args.tail.toList)) map {
           key => {
-            println("Delete:"+key)
-            val req = delete("/" + key).s3headers(bucket)
-            s3Client(req)
+            println("Delete:" + key)
+            s3Client(Delete(bucket, key))
           }
         }
         Future.collect(futures).get().foreach {
@@ -49,6 +46,7 @@ object S3BucketEmptier {
       }
     }
     s3Client.release()
+    System.exit(0)
   }
 
 }

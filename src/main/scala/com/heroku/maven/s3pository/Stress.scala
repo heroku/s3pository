@@ -1,7 +1,6 @@
 package com.heroku.maven.s3pository
 
 import com.heroku.maven.s3pository.S3rver._
-import com.heroku.maven.s3pository.ProxyService._
 
 import java.util.concurrent.atomic.AtomicInteger
 import com.twitter.finagle.stats.SummarizingStatsReceiver
@@ -14,9 +13,9 @@ import java.net.{InetSocketAddress, URI}
 import com.twitter.util.{Time, Future, MapMaker}
 import org.jboss.netty.handler.codec.http._
 import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
-import scala.xml._
-import util.{Random}
+import util.Random
 import java.io.{FileOutputStream, File}
+import com.heroku.finagle.aws.{ListBucket, S3}
 
 /**
  * Set S3_KEY and S3_SECRET as env vars
@@ -42,17 +41,11 @@ object Stress {
         }
     }
 
-    val listClient: Service[HttpRequest, HttpResponse] = ClientBuilder()
-      .codec(Http())
-      .hosts(new InetSocketAddress("s3.amazonaws.com", 80))
-      .hostConnectionCoresize(concurrency)
-      .retries(3)
-      .hostConnectionLimit(concurrency)
-      .build()
+    val listClient = S3.client(s3key, s3secret)
 
-    val keys  = proxies.foldLeft(List.empty[String]){
-      (l,p) =>
-        val keys = getKeys(listClient, p.bucket)
+    val keys = proxies.foldLeft(List.empty[String]) {
+      (l, p) =>
+        val keys = ListBucket.getKeys(listClient, p.bucket)
         l ++
           keys.map(p.prefix + "/" + _) /*++ keys.map(all.prefix + "/" + _)  */
     }
@@ -92,7 +85,7 @@ object Stress {
         client(request
         ) onSuccess {
           response =>
-            println("onSuccess:"+response.getStatus.getCode)
+            println("onSuccess:" + response.getStatus.getCode)
             responses(response.getStatus).incrementAndGet()
             if (response.getStatus.getCode == 200) {
               val devnull = new File("/dev/null")

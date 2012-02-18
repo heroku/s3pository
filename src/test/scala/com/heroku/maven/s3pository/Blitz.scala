@@ -1,18 +1,14 @@
 package com.heroku.maven.s3pository
 
 import com.heroku.maven.s3pository.S3rver._
-import com.heroku.maven.s3pository.ProxyService._
-import com.twitter.finagle.Service
-import org.jboss.netty.handler.codec.http.{HttpResponse, HttpRequest}
-import com.twitter.finagle.builder.ClientBuilder
-import com.twitter.finagle.http.Http
 import io.blitz.curl.Rush
-import java.net.{URL, InetSocketAddress}
+import java.net.URL
 import io.blitz.curl.config.variable.ListVariable
 import collection.JavaConversions._
 import io.blitz.curl.rush.{RushResult, IRushListener}
 import io.blitz.curl.config.{Pattern, Interval}
 import util.{Random, Properties}
+import com.heroku.finagle.aws.{ListBucket, S3}
 
 object Blitz {
 
@@ -34,17 +30,11 @@ object Blitz {
       "noKey"
     }
 
-    val listClient: Service[HttpRequest, HttpResponse] = ClientBuilder()
-      .codec(Http())
-      .hosts(new InetSocketAddress("s3.amazonaws.com", 80))
-      .hostConnectionCoresize(1)
-      .retries(3)
-      .hostConnectionLimit(1)
-      .build()
+    val listClient = S3.client(s3key, s3secret)
 
     val keys = proxies.foldLeft(List.empty[String]) {
       (l, p) =>
-        val keys = getKeys(listClient, p.bucket)
+        val keys = ListBucket.getKeys(listClient, p.bucket)
         l ++ keys
     }
     listClient.release()

@@ -10,6 +10,7 @@ import com.twitter.logging.config.{ConsoleHandlerConfig, LoggerConfig}
 import java.net.InetSocketAddress
 
 import util.Properties
+import com.heroku.finagle.aws.S3.{S3Secret, S3Key}
 
 
 object S3rver {
@@ -43,7 +44,7 @@ object S3rver {
   val all = RepositoryGroup("/jvm", proxies)
 
   /*Grab AWS keys */
-  implicit val s3key = S3Key {
+  val s3key = S3Key {
     Properties.envOrNone("S3_KEY").getOrElse {
       System.out.println("S3_KEY env var not defined, exiting")
       System.exit(666)
@@ -51,7 +52,7 @@ object S3rver {
     }
   }
 
-  implicit val s3secret = S3Secret {
+  val s3secret = S3Secret {
     Properties.envOrNone("S3_SECRET").getOrElse {
       System.out.println("S3_SECRET env var not defined, exiting")
       System.exit(666)
@@ -61,7 +62,7 @@ object S3rver {
 
   val doPrimeCaches = Properties.envOrElse("PRIME_CACHES", "false").toBoolean
 
-  def main(args: Array[String]) {
+  def configureLogging() = {
     Logger.clearHandlers()
     val logConf = new LoggerConfig {
       node = ""
@@ -74,14 +75,18 @@ object S3rver {
       level = Logger.WARNING
     }
     supressNettyWarning.apply()
+  }
+
+  def main(args: Array[String]) {
+    configureLogging()
     val log = Logger.get("S3Server-Main")
     log.warning("Starting S3rver")
 
     //implicit val stats = NullStatsReceiver
-    implicit val stats = NewRelicStatsReceiver
+    val stats = NewRelicStatsReceiver
 
     /*Build the Service*/
-    val service = new ProxyService(proxies, List(all), doPrimeCaches)
+    val service = new ProxyService(proxies, List(all), doPrimeCaches, s3key, s3secret, stats)
 
     /*Grab port to bind to*/
     val address = new InetSocketAddress(Properties.envOrElse("PORT", "8080").toInt)

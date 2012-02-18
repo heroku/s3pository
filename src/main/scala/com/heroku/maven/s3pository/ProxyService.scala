@@ -19,12 +19,13 @@ import org.jboss.netty.buffer.{ChannelBuffers, ChannelBuffer}
 import org.jboss.netty.handler.codec.http._
 import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
 
-import xml.XML
 import com.twitter.finagle.Service
 import com.twitter.finagle.stats.StatsReceiver
 import java.util.concurrent.atomic.AtomicReference
-import annotation.{tailrec, implicitNotFound}
+import annotation.tailrec
 import java.lang.IllegalArgumentException
+import com.heroku.finagle.aws._
+import com.heroku.finagle.aws.S3._
 
 /*
 HTTP Service that acts as a caching proxy server for the configured ProxiedRepository(s) and RepositoryGroup(s).
@@ -37,7 +38,7 @@ will respond to a request for
 by making requests to
     http://source.repo.com/path/to/repo/some/artifact.ext
 */
-class ProxyService(repositories: List[ProxiedRepository], groups: List[RepositoryGroup], doCachePrime: Boolean)(implicit s3key: S3Key, s3secret: S3Secret, stats: StatsReceiver) extends Service[HttpRequest, HttpResponse] {
+class ProxyService(repositories: List[ProxiedRepository], groups: List[RepositoryGroup], doCachePrime: Boolean, s3key: S3Key, s3secret: S3Secret, stats: StatsReceiver) extends Service[HttpRequest, HttpResponse] {
 
   import ProxyService._
 
@@ -48,7 +49,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   val clients: HashMap[String, Client] = {
     repositories.foldLeft(new HashMap[String, Client]) {
       (m, repo) => {
-        m + (repo.prefix -> new Client(clientService(repo.host, repo.port, repo.ssl, "source of:" + repo.bucket, 4.seconds, 16.seconds), clientService(repo.bucket + ".s3.amazonaws.com", 80, false, "s3 client for:" + repo.bucket), repo))
+        m + (repo.prefix -> new Client(clientService(repo.host, repo.port, repo.ssl, "source of:" + repo.bucket, stats, 4.seconds, 16.seconds), s3Service(s3key, s3secret, "s3 client for:" + repo.bucket, stats), repo))
       }
     }
   }
@@ -73,7 +74,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     group.repos.reverse.foreach {
       repo =>
         log.debug("priming hit cache from %s", repo.bucket)
-        getKeys(clients.get(repo.prefix).get.s3Service.service, repo.bucket).foreach(key => group.hits += (("/" + key) -> repo))
+        ListBucket.getKeys(clients.get(repo.prefix).get.s3Service.service, repo.bucket).foreach(key => group.hits += (("/" + key) -> repo))
     }
   }
 
@@ -81,8 +82,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   /*Create any missing S3 buckets. Create bucket is idempotent, and returns a 200 if the bucket exists or is created*/
   def createBucket(client: Client) {
     log.debug("creating bucket: %s".format(client.repo.bucket))
-    val s3request = put("/").headers(HOST -> bucketHost(client.repo.bucket), DATE -> amzDate, CONTENT_LENGTH -> "0").sign(client.repo.bucket)
-    client.s3Service.service(s3request) onSuccess {
+    client.s3Service(CreateBucket(client.repo.bucket)) onSuccess {
       response =>
         if (response.getStatus.getCode != 200) {
           log.info("Create Bucket %s return code %d", client.repo.bucket, response.getStatus.getCode)
@@ -218,9 +218,8 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
   @Trace
   def singleRepoRequest(client: Client, contentUri: String, request: HttpRequest): Future[HttpResponse] = {
     if (client.repo.canContain(contentUri)) {
-      val s3request = get(contentUri).s3headers(client.repo.bucket)
       /*Check S3 cache first*/
-      client.s3Service.tryService(s3request, timeout, client.repo.bucket)("error checking s3 bucket %s for %s ", client.repo.bucket, contentUri).flatMap {
+      client.s3Service.tryService(Get(client.repo.bucket, contentUri), timeout, client.repo.bucket)("error checking s3 bucket %s for %s ", client.repo.bucket, contentUri).flatMap {
         s3response => {
           s3response.getStatus.getCode match {
             /*S3 has the content, return it */
@@ -268,12 +267,9 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
 
   /*Asynchronously put content to S3*/
   def putS3(client: Client, contentUri: String, response: HttpResponse, content: ChannelBuffer) {
-    val s3Put = put(contentUri).headers(CONTENT_LENGTH -> content.readableBytes.toString, DATE -> amzDate,
-      CONTENT_TYPE -> response.getHeader(CONTENT_TYPE), STORAGE_CLASS -> RRS, HOST -> bucketHost(client.repo.bucket))
-    s3Put.setContent(content)
+    val s3Put = Put(client.repo.bucket, contentUri, content, STORAGE_CLASS -> RRS)
     response.ifHeader(ETAG)(s3Put.setHeader(SOURCE_ETAG, _))
     response.ifHeader(LAST_MODIFIED)(s3Put.setHeader(SOURCE_MOD, _))
-    s3Put.sign(client.repo.bucket)
     client.s3Service {
       s3Put
     } onSuccess {
@@ -318,6 +314,11 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
 object ProxyService {
   val log = Logger.get(classOf[ProxyService])
 
+  val STORAGE_CLASS = "x-amz-storage-class"
+  val RRS = "REDUCED_REDUNDANCY"
+  val SOURCE_ETAG = "x-amz-meta-source-etag"
+  val SOURCE_MOD = "x-amz-meta-source-mod"
+
   def notFound = {
     val resp = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.NOT_FOUND)
     resp.setContent(ChannelBuffers.wrappedBuffer(
@@ -360,7 +361,7 @@ object ProxyService {
   }
 
   /*Build a Client ServiceFactory for the given endpoint*/
-  def clientService(host: String, port: Int, ssl: Boolean, name: String, connectTimeout: Duration = 2.second, requestTimeout: Duration = 8.seconds)(implicit stats: StatsReceiver): Service[HttpRequest, HttpResponse] = {
+  def clientService(host: String, port: Int, ssl: Boolean, name: String, stats: StatsReceiver, connectTimeout: Duration = 2.second, requestTimeout: Duration = 8.seconds): Service[HttpRequest, HttpResponse] = {
     import com.twitter.conversions.storage._
     var builder = ClientBuilder()
       .codec(Http(_maxRequestSize = 100.megabytes, _maxResponseSize = 100.megabyte))
@@ -368,41 +369,29 @@ object ProxyService {
       .recvBufferSize(262144)
       .hosts(new InetSocketAddress(host, port))
       .hostConnectionLimit(Integer.MAX_VALUE)
-      .hostConnectionMaxIdleTime(5.seconds)
       .retries(1)
       .requestTimeout(requestTimeout)
       .tcpConnectTimeout(connectTimeout)
-      //.failureAccrualParams(2, 60.seconds)
       .reportTo(stats)
       .name(name)
     if (ssl) (builder = builder.tlsWithoutValidation())
     builder.build()
-
-
   }
 
-  /*get the keys in an s3bucket, s3 only returns up to 1000 at a time so this can be called recursively*/
-  def getKeys(client: Service[HttpRequest, HttpResponse], bucket: String, marker: Option[String] = None)(implicit s3key: S3Key, s3secret: S3Secret): List[String] = {
-    val listRequest = get("/").s3headers(bucket)
-    marker.foreach(m => listRequest.query("marker" -> m))
-    var listResp = client(listRequest).onFailure(log.error(_, "error getting keys for bucket %s marker %s", bucket, marker)).get()
-    var respStr = listResp.getContent.toString("UTF-8")
-    log.debug(respStr)
-    var xResp = XML.loadString(respStr)
-
-    val keys = (xResp \\ "Contents" \\ "Key") map (_.text) toList
-    val truncated = ((xResp \ "IsTruncated") map (_.text.toBoolean))
-    listResp = null
-    respStr = null
-    xResp = null
-    log.info("Got %s keys for %s", keys.size.toString, bucket)
-    if (truncated.headOption.getOrElse(false)) {
-      keys ++ getKeys(client, bucket, Some(keys.last))
-    } else {
-      keys
-    }
+  def s3Service(s3key: S3Key, s3Secret: S3Secret, name: String, stats: StatsReceiver, connectTimeout: Duration = 2.second, requestTimeout: Duration = 8.seconds): Service[S3Request, HttpResponse] = {
+    import com.twitter.conversions.storage._
+    ClientBuilder().codec(S3(s3key.key, s3Secret.secret, Http(_maxRequestSize = 100.megabytes, _maxResponseSize = 100.megabytes)))
+      .sendBufferSize(262144)
+      .recvBufferSize(262144)
+      .hosts("s3.amazonaws.com:80")
+      .hostConnectionLimit(Integer.MAX_VALUE)
+      .requestTimeout(requestTimeout)
+      .tcpConnectTimeout(connectTimeout)
+      .name(name)
+      .retries(1)
+      .reportTo(stats)
+      .build()
   }
-
 }
 
 case class ProxiedRepository(prefix: String, host: String, hostPath: String, bucket: String, port: Int = 80, ssl: Boolean = false, _includes: List[String] = List.empty[String]) {
@@ -411,8 +400,8 @@ case class ProxiedRepository(prefix: String, host: String, hostPath: String, buc
   def include(prefix: String) = this.copy(_includes = (prefix :: this._includes))
 
   def canContain(contentUri: String): Boolean = {
-    if(contentUri == "/") false
-    else if(_includes.size == 0) true
+    if (contentUri == "/") false
+    else if (_includes.size == 0) true
     else !skip(_includes, contentUri)
   }
 
@@ -433,19 +422,19 @@ case class RepositoryGroup(prefix: String, repos: List[ProxiedRepository]) {
 }
 
 /*Holds a ProxiedRepository and the associated source and s3 client ServiceFactories*/
-class Client(repoServiceFactory: => Service[HttpRequest, HttpResponse], s3ServiceFactory: => Service[HttpRequest, HttpResponse], val repo: ProxiedRepository) {
+class Client(repoServiceFactory: => Service[HttpRequest, HttpResponse], s3ServiceFactory: => Service[S3Request, HttpResponse], val repo: ProxiedRepository) {
   val repoRef: AtomicReference[Service[HttpRequest, HttpResponse]] = new AtomicReference[Service[HttpRequest, HttpResponse]](repoServiceFactory)
-  val s3Ref: AtomicReference[Service[HttpRequest, HttpResponse]] = new AtomicReference[Service[HttpRequest, HttpResponse]](s3ServiceFactory)
+  val s3Ref: AtomicReference[Service[S3Request, HttpResponse]] = new AtomicReference[Service[S3Request, HttpResponse]](s3ServiceFactory)
 
   def repoService: Service[HttpRequest, HttpResponse] = {
     get(repoRef, repoServiceFactory, repo.host)
   }
 
-  def s3Service: Service[HttpRequest, HttpResponse] = {
+  def s3Service: Service[S3Request, HttpResponse] = {
     get(s3Ref, s3ServiceFactory, repo.bucket)
   }
 
-  private def get(ref: AtomicReference[Service[HttpRequest, HttpResponse]], fact: => Service[HttpRequest, HttpResponse], msg: String): Service[HttpRequest, HttpResponse] = {
+  private def get[T <: Service[_, _]](ref: AtomicReference[T], fact: => T, msg: String): T = {
     val svc = ref.get()
     if (svc.isAvailable) svc
     else {
@@ -466,11 +455,7 @@ class Client(repoServiceFactory: => Service[HttpRequest, HttpResponse], s3Servic
 
 }
 
-@implicitNotFound(msg = "cannot find implicit S3Key in scope")
-case class S3Key(key: String)
 
-@implicitNotFound(msg = "cannot find implicit S3Secret in scope")
-case class S3Secret(secret: String)
 
 
 
