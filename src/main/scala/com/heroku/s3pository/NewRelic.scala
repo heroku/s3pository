@@ -18,7 +18,7 @@ class NewRelicLogHandler(formatter: Formatter, level: Option[Level]) extends Han
           "logger" -> record.getLoggerName,
           "sourceClass" -> record.getSourceClassName,
           "sourceMethod" -> record.getSourceMethodName,
-          "message" -> record.getMessage
+          "message" -> record.getMessage.format(record.getParameters: _*)
         )
         NewRelic.noticeError(exception, asJavaMap(map))
       }
