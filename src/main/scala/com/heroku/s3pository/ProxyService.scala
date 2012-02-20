@@ -163,11 +163,11 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
         log.debug("parallel request for %s to %s", contentUri, repo.host)
         /*clone the request and send to the proxied repo that will timeout and return a 504 after 30 seconds*/
         singleRepoRequest(client, contentUri, cloneRequest(request)).within(timer, 30.seconds).handle {
-          case _: TimeoutException => {
-            log.warning("timeout in parallel req to %s for %s", client.repo.host, contentUri)
+          case t: TimeoutException => {
+            log.warning(t, "timeout in parallel req to %s for %s", client.repo.host, contentUri)
             timeout
           }
-          case _@ex => {
+          case ex: Exception => {
             log.error(ex, "error in parallel req to %s for %s", client.repo.host, contentUri)
             timeout
           }
@@ -251,7 +251,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
               }
             }
             case code@_ => {
-              log.error("Recieved code: %s", code)
+              log.error(new RuntimeException("error code recieved from upstream" + client.repo.host), "Recieved code: %s", code)
               log.error(s3response.getContent.toString("UTF-8"))
               Future.value(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.INTERNAL_SERVER_ERROR))
             }

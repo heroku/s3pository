@@ -32,7 +32,7 @@ class NewRelicLogHandler(formatter: Formatter, level: Option[Level]) extends Han
 }
 
 class NewRelicLogHandlerConfig extends HandlerConfig {
-  def apply() = new NewRelicLogHandler(formatter(), level)
+  def apply() = new NewRelicLogHandler(formatter(), Some(Level.DEBUG))
 }
 
 object NewRelicStatsReceiver extends StatsReceiverWithCumulativeGauges {
