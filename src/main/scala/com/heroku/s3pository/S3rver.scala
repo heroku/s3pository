@@ -28,7 +28,7 @@ object S3rver {
     ProxiedRepository("/maven-spring-milestones", "maven.springframework.org", "/milestone", s3prefix + "-proxy-spring-milestones").include("/com/springsource").include("/org/springframework").include("/org/aspectj"),
     ProxiedRepository("/maven-spring-roo", "spring-roo-repository.springsource.org", "/release", s3prefix + "-proxy-spring-roo").include("/org/springframework/roo"),
     ProxiedRepository("/maven-jboss", "repository.jboss.org", "/nexus/content/repositories/releases", s3prefix + "-proxy-jboss", 443, true).include("/jboss").include("/org/jboss").include("/javax/validation").include("/org/hibernate"),
-    ProxiedRepository("/maven-sonatype-oss", "oss.sonatype.org", "/content/repositories/snapshots", s3prefix + "-proxy-sonatype-snapshots").include("/com/force"),
+    ProxiedRepository("/maven-sonatype-oss", "oss.sonatype.org", "/content/repositories/snapshots", s3prefix + "-proxy-sonatype-snapshots").include("/com/force").include("/com/heroku"),
     ProxiedRepository("/maven-datanucleus", "www.datanucleus.org", "/downloads/maven2", s3prefix + "-proxy-datanucleus").include("/org/datanucleus").include("/javax/jdo"),
     ProxiedRepository("/maven-typesafe-releases", "repo.typesafe.com", "/typesafe/maven-releases", s3prefix + "-proxy-typesafe-releases").include("/com/typesafe"),
     ProxiedRepository("/ivy-typesafe-releases", "repo.typesafe.com", "/typesafe/ivy-releases", s3prefix + "-proxy-typesafe-ivy-releases").include("/com.typesafe").include("/org.scala-tools.sbt"),
