@@ -106,14 +106,14 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
       /*request matches a group*/
       case Some(group) => {
         log.info("Group request: %s", group.prefix)
-        groupRepoRequest(group, contentUri, request)
+        groupRepoRequest(group, contentUri, request).onSuccess(inspectFinalResponse(request, _)).onFailure(inspectFinalError(request, _))
       }
       case None => {
         clients.get(prefix) match {
           /*request matches a single proxied repo*/
           case Some(client) => {
             log.info("Single repo request: %s", prefix)
-            singleRepoRequest(client, contentUri, request)
+            singleRepoRequest(client, contentUri, request).onSuccess(inspectFinalResponse(request, _)).onFailure(inspectFinalError(request, _))
           }
           /*no match*/
           case None => {
@@ -244,7 +244,8 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
                     val s3buffer = response.getContent.duplicate()
                     putS3(client, contentUri, response, s3buffer)
                   } else {
-                    if (response.getStatus.getCode == 200 || response.getStatus.getCode == 404) {
+                    /*504s happen frequently when we time out the singleRepoRequests in a group request*/
+                    if (response.getStatus.getCode == 200 || response.getStatus.getCode == 404 || response.getStatus.getCode == 504) {
                       log.info("Request to Source repo %s: path: %s Status Code: %s", client.repo.host, request.getUri, response.getStatus.getCode)
                     } else {
                       log.warning(new RuntimeException("Unexpected upstream response"), "Request to Source repo %s: path: %s Status Code: %s", client.repo.host, request.getUri, response.getStatus.getCode)
@@ -312,6 +313,16 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
     } else {
       source
     }
+  }
+
+  def inspectFinalResponse(req: HttpRequest, resp: HttpResponse) {
+    if (resp.getStatus.getCode != 200 && resp.getStatus.getCode != 404) {
+      log.warning(new RuntimeException("Unexpected Final Response Code"), "Request for %s: Status Code: %s", req.getUri, resp.getStatus.getCode)
+    }
+  }
+
+  def inspectFinalError(req: HttpRequest, t: Throwable) {
+    log.error(t, "Request for %s: Threw: %s", req.getUri, t.getClass.getSimpleName)
   }
 }
 
