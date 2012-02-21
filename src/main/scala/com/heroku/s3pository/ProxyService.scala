@@ -244,7 +244,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
                     val s3buffer = response.getContent.duplicate()
                     putS3(client, contentUri, response, s3buffer)
                   } else {
-                    log.warn("Request to Source repo %s: path: %s Status Code: %s", client.repo.host, request.getUri, response.getStatus.getCode)
+                    log.warning("Request to Source repo %s: path: %s Status Code: %s", client.repo.host, request.getUri, response.getStatus.getCode)
                   }
                   Future.value(response)
                 }
