@@ -48,3 +48,4 @@ multiverse.log
 akka-tutorials/akka-tutorial-pi-sbt/project/boot/
 doozer-*/dooz.log
 *.env
+safeConfig
