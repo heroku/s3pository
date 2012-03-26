@@ -139,7 +139,7 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
           /*no cached misses, do a parallel request to the group proxies*/
           case None => groupParallelRequest(group, contentUri, request)
           /*cached missed is timed out, remove the cache entry and do a parallel request to the group proxies*/
-          case Some(time) if (time.plusMinutes(30).isBeforeNow) => {
+          case Some(time) if (time.plusMinutes(group.missTimeout).isBeforeNow) => {
             log.info("invalidating cached miss for %s", contentUri)
             group.misses.remove(contentUri)
             groupParallelRequest(group, contentUri, request)
@@ -204,7 +204,13 @@ class ProxyService(repositories: List[ProxiedRepository], groups: List[Repositor
           firstAcceptableResponse(rest)
         }
       }
-      case None => fallbackResponse
+      case None => {
+    	  if(fallbackResponse.getStatus().equals(HttpResponseStatus.NOT_FOUND)) {    	    
+    		  group.misses.put(contentUri, new DateTime())
+    	  }
+    	  fallbackResponse
+      }
+        
     }
   }
 
@@ -430,7 +436,7 @@ case class ProxiedRepository(prefix: String, host: String, hostPath: String, buc
   }
 }
 
-case class RepositoryGroup(prefix: String, repos: List[ProxiedRepository]) {
+case class RepositoryGroup(prefix: String, repos: List[ProxiedRepository], missTimeout: Int=30) {
   if (prefix.substring(1).contains("/")) throw new IllegalArgumentException("Prefix %s for Group Should not contain the / character, except as its first character".format(prefix))
   val hits = new MMap[String, ProxiedRepository]
   val misses = new MMap[String, DateTime]
