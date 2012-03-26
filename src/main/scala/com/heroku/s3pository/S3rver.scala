@@ -20,27 +20,56 @@ object S3rver {
     System.exit(666)
     "noPrefix"
   }
+                                       /*proxy prefix          source repo host                          source repo path to m2 repo             S3 bucket to store cached content */  
+    val mavenCentral = ProxiedRepository("/maven-central", "repo1.maven.org", "/maven2", s3prefix + "-proxy-central")
+    val mavenSpringReleases = ProxiedRepository("/maven-spring-releases", "maven.springframework.org", "/release", s3prefix + "-proxy-spring-releases").include("/com/springsource").include("/org/springframework").include("/org/aspectj")
+    val mavenSpringMilestones = ProxiedRepository("/maven-spring-milestones", "maven.springframework.org", "/milestone", s3prefix + "-proxy-spring-milestones").include("/com/springsource").include("/org/springframework").include("/org/aspectj")
+    val mavenSpringRoo = ProxiedRepository("/maven-spring-roo", "spring-roo-repository.springsource.org", "/release", s3prefix + "-proxy-spring-roo").include("/org/springframework/roo")
+    val mavenJboss = ProxiedRepository("/maven-jboss", "repository.jboss.org", "/nexus/content/repositories/releases", s3prefix + "-proxy-jboss", 443, true).include("/jboss").include("/org/jboss").include("/javax/validation").include("/org/hibernate")
+    val mavenSonatypeOss = ProxiedRepository("/maven-sonatype-oss", "oss.sonatype.org", "/content/repositories/snapshots", s3prefix + "-proxy-sonatype-snapshots").include("/com/force").include("/com/heroku")
+    val mavenDatanucleus = ProxiedRepository("/maven-datanucleus", "www.datanucleus.org", "/downloads/maven2", s3prefix + "-proxy-datanucleus").include("/org/datanucleus").include("/javax/jdo")
+    val mavenTypesafeReleases = ProxiedRepository("/maven-typesafe-releases", "repo.typesafe.com", "/typesafe/maven-releases", s3prefix + "-proxy-typesafe-releases").include("/com/typesafe")
+    val ivyTypesafeReleases = ProxiedRepository("/ivy-typesafe-releases", "repo.typesafe.com", "/typesafe/ivy-releases", s3prefix + "-proxy-typesafe-ivy-releases").include("/com.typesafe").include("/org.scala-tools.sbt")
+    val ivyTypesafeSnapshots = ProxiedRepository("/ivy-typesafe-snapshots", "repo.typesafe.com", "/typesafe/ivy-snapshots", s3prefix + "-proxy-typesafe-ivy-snapshots").include("/com.typesafe").include("/org.scala-tools.sbt")
+    val ivyDatabinder = ProxiedRepository("/ivy-databinder", "databinder.net", "/repo", s3prefix + "-proxy-databinder").include("/org.scala-tools.sbt")
+    val mavenTwitter = ProxiedRepository("/maven-twitter", "maven.twttr.com", "", s3prefix + "-proxy-twitter").include("/com/twitter")
+    val mavenGlassfish = ProxiedRepository("/maven-glassfish", "download.java.net", "/maven/glassfish", s3prefix + "-proxy-glassfish").include("/org/glassfish")
+	val grailsCentral = ProxiedRepository("/grails-central", "repo.grails.org", "/grails/core", s3prefix + "-proxy-grails-core")
+	val grailsPlugins = ProxiedRepository("/grails-plugins", "repo.grails.org", "/grails/plugins", s3prefix + "-proxy-grails-plugins").include("/org/grails/plugins")
+	//val grailsPluginsSvn = ProxiedRepository("/grails-plugins-svn", "plugins.grails.org", "", s3prefix + "-proxy-grails-plugins-svn")
 
   /*Wire up the proxied repositories*/
-  val proxies = List(/*proxy prefix          source repo host                          source repo path to m2 repo             S3 bucket to store cached content */
-    ProxiedRepository("/maven-central", "repo1.maven.org", "/maven2", s3prefix + "-proxy-central"),
-    ProxiedRepository("/maven-spring-releases", "maven.springframework.org", "/release", s3prefix + "-proxy-spring-releases").include("/com/springsource").include("/org/springframework").include("/org/aspectj"),
-    ProxiedRepository("/maven-spring-milestones", "maven.springframework.org", "/milestone", s3prefix + "-proxy-spring-milestones").include("/com/springsource").include("/org/springframework").include("/org/aspectj"),
-    ProxiedRepository("/maven-spring-roo", "spring-roo-repository.springsource.org", "/release", s3prefix + "-proxy-spring-roo").include("/org/springframework/roo"),
-    ProxiedRepository("/maven-jboss", "repository.jboss.org", "/nexus/content/repositories/releases", s3prefix + "-proxy-jboss", 443, true).include("/jboss").include("/org/jboss").include("/javax/validation").include("/org/hibernate"),
-    ProxiedRepository("/maven-sonatype-oss", "oss.sonatype.org", "/content/repositories/snapshots", s3prefix + "-proxy-sonatype-snapshots").include("/com/force").include("/com/heroku"),
-    ProxiedRepository("/maven-datanucleus", "www.datanucleus.org", "/downloads/maven2", s3prefix + "-proxy-datanucleus").include("/org/datanucleus").include("/javax/jdo"),
-    ProxiedRepository("/maven-typesafe-releases", "repo.typesafe.com", "/typesafe/maven-releases", s3prefix + "-proxy-typesafe-releases").include("/com/typesafe"),
-    ProxiedRepository("/ivy-typesafe-releases", "repo.typesafe.com", "/typesafe/ivy-releases", s3prefix + "-proxy-typesafe-ivy-releases").include("/com.typesafe").include("/org.scala-tools.sbt"),
-    ProxiedRepository("/ivy-typesafe-snapshots", "repo.typesafe.com", "/typesafe/ivy-snapshots", s3prefix + "-proxy-typesafe-ivy-snapshots").include("/com.typesafe").include("/org.scala-tools.sbt"),
-    //ProxiedRepository("/maven-scala-tools-releases", "s3.amazonaws.com", "/" + s3prefix + "-proxy-scalatools-releases", s3prefix + "-proxy-scalatools-releases"),
-    //ProxiedRepository("/maven-scala-tools-snapshots", "s3.amazonaws.com", "/" + s3prefix + "-proxy-scalatools-snapshots", s3prefix + "-proxy-scalatools-snapshots"),
-    ProxiedRepository("/ivy-databinder", "databinder.net", "/repo", s3prefix + "-proxy-databinder").include("/org.scala-tools.sbt"),
-    ProxiedRepository("/maven-twitter", "maven.twttr.com", "", s3prefix + "-proxy-twitter").include("/com/twitter"),
-    ProxiedRepository("/maven-glassfish", "download.java.net", "/maven/glassfish", s3prefix + "-proxy-glassfish").include("/org/glassfish")
+  val proxies = List(
+    mavenCentral,
+    mavenSpringReleases,
+    mavenSpringMilestones,
+    mavenSpringRoo,
+    mavenJboss,
+    mavenSonatypeOss,
+    mavenDatanucleus,
+    mavenTypesafeReleases,
+    ivyTypesafeReleases,
+    ivyTypesafeSnapshots,
+    ivyDatabinder,
+    mavenTwitter,
+    mavenGlassfish
   )
+  
+  /*Wire up the proxied repositories for Grails*/
+  val grailsProxies = List(
+	mavenCentral,
+    mavenSpringReleases,
+    mavenSpringMilestones,
+    mavenJboss,
+    mavenSonatypeOss,
+    mavenTwitter,
+	grailsCentral,
+	grailsPlugins
+  )
+  
   /*Create the Groups*/
   val all = RepositoryGroup("/jvm", proxies)
+  val grails = RepositoryGroup("/grails", grailsProxies, 360)
 
   /*Grab AWS keys */
   val s3key = S3Key {
@@ -85,7 +114,7 @@ object S3rver {
     val stats = NewRelicStatsReceiver
 
     /*Build the Service*/
-    val service = new ProxyService(proxies, List(all), doPrimeCaches, s3key, s3secret, stats)
+    val service = new ProxyService(proxies ++ grailsProxies, List(all, grails), doPrimeCaches, s3key, s3secret, stats)
 
     /*Grab port to bind to*/
     val address = new InetSocketAddress(Properties.envOrElse("PORT", "8080").toInt)
