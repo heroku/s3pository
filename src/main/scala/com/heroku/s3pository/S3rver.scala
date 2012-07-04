@@ -37,6 +37,7 @@ object S3rver {
   val mavenGlassfish = ProxiedRepository("/maven-glassfish", "download.java.net", "/maven/glassfish", s3prefix + "-proxy-glassfish").include("/org/glassfish")
   val grailsCentral = ProxiedRepository("/grails-central", "repo.grails.org", "/grails/core", s3prefix + "-proxy-grails-core")
   val grailsPlugins = ProxiedRepository("/grails-plugins", "repo.grails.org", "/grails/plugins", s3prefix + "-proxy-grails-plugins").include("/org/grails/plugins")
+  val clojars = ProxiedRepository("/clojars", "clojars.org", "/repo", s3prefix + "-proxy-clojars")
   //val grailsPluginsSvn = ProxiedRepository("/grails-plugins-svn", "plugins.grails.org", "", s3prefix + "-proxy-grails-plugins-svn")
 
   /*Wire up the proxied repositories*/
@@ -54,7 +55,8 @@ object S3rver {
     ivyTypesafeSnapshots,
     ivyDatabinder,
     mavenTwitter,
-    mavenGlassfish
+    mavenGlassfish,
+    clojars
   )
 
   /*Wire up the proxied repositories for Grails*/
@@ -69,9 +71,16 @@ object S3rver {
     grailsPlugins
   )
 
+  val clojureProxies = List(
+    mavenCentral,
+    clojars,
+    mavenSonatypeOss
+  )
+
   /*Create the Groups*/
   val all = RepositoryGroup("/jvm", proxies)
   val grails = RepositoryGroup("/grails", grailsProxies, 360)
+  val clojure = RepositoryGroup("/clojure", clojureProxies, 360)
 
   /*Grab AWS keys */
   val s3key = S3Key {
@@ -116,7 +125,7 @@ object S3rver {
     val stats = NewRelicStatsReceiver
 
     /*Build the Service*/
-    val service = new ProxyService(proxies ++ grailsProxies, List(all, grails), doPrimeCaches, s3key, s3secret, stats)
+    val service = new ProxyService(proxies ++ grailsProxies ++ clojureProxies, List(all, grails, clojure), doPrimeCaches, s3key, s3secret, stats)
 
     /*Grab port to bind to*/
     val address = new InetSocketAddress(Properties.envOrElse("PORT", "8080").toInt)
