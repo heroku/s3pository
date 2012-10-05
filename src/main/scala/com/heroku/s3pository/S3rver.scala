@@ -72,7 +72,9 @@ object S3rver {
   )
 
   val clojureProxies = List(
-    clojars
+    mavenCentral,
+    clojars,
+    mavenSonatypeOss
   )
 
   /*Create the Groups*/
