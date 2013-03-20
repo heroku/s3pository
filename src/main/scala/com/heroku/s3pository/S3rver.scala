@@ -26,6 +26,9 @@ object S3rver {
   val mavenSpringMilestones = ProxiedRepository("/maven-spring-milestones", "maven.springframework.org", "/milestone", s3prefix + "-proxy-spring-milestones").include("/com/springsource").include("/org/springframework").include("/org/aspectj")
   val mavenSpringRoo = ProxiedRepository("/maven-spring-roo", "spring-roo-repository.springsource.org", "/release", s3prefix + "-proxy-spring-roo").include("/org/springframework/roo")
   val mavenJboss = ProxiedRepository("/maven-jboss", "repository.jboss.org", "/nexus/content/repositories/releases", s3prefix + "-proxy-jboss", 443, true).include("/jboss").include("/org/jboss").include("/javax/validation").include("/org/hibernate")
+  val mavenJbossPublic = ProxiedRepository("/maven-jboss-public", "repository.jboss.org", "/nexus/content/groups/public", s3prefix + "-proxy-jboss-public", 443, true).include("/jboss").include("/org/jboss").include("/javax/validation").include("/org/hibernate")
+  val mavenJbossThirdparty = ProxiedRepository("/maven-jboss-thirdparty", "repository.jboss.org", "/nexus/content/repositories/thirdparty-uploads", s3prefix + "-proxy-jboss-thirdparty", 443, true)
+  val mavenTerracotta = ProxiedRepository("/maven-terracotta", "www.terracotta.org", "/download/reflector/releases", s3prefix + "-proxy-terracotta", 443, true)
   val mavenSonatypeOss = ProxiedRepository("/maven-sonatype-oss", "oss.sonatype.org", "/content/repositories/snapshots", s3prefix + "-proxy-sonatype-snapshots").include("/com/force").include("/com/heroku")
   val mavenSonatypeOssScalaTools = ProxiedRepository("/maven-scala-tools-releases", "oss.sonatype.org", "/content/groups/scala-tools", s3prefix + "-proxy-sonatype-scala-tools")
   val mavenDatanucleus = ProxiedRepository("/maven-datanucleus", "www.datanucleus.org", "/downloads/maven2", s3prefix + "-proxy-datanucleus").include("/org/datanucleus").include("/javax/jdo")
@@ -47,6 +50,9 @@ object S3rver {
     mavenSpringMilestones,
     mavenSpringRoo,
     mavenJboss,
+    mavenJbossPublic,
+    mavenJbossThirdparty,
+    mavenTerracotta,
     mavenSonatypeOss,
     mavenSonatypeOssScalaTools,
     mavenDatanucleus,
@@ -141,7 +147,7 @@ object S3rver {
       .name("s3pository")
       .build(service)
 
-    log.warning("S3rver started")
+    log.info("S3rver started (PORT " + address.getPort + ")")
   }
 }
 
