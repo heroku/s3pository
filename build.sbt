@@ -8,7 +8,7 @@ version := "1.0"
 
 scalaVersion := "2.9.2"
 
-resolvers ++= Seq("twitter.com" at "http://maven.twttr.com", "newrelic" at "http://download.newrelic.com", "heroku-finagle" at "http://s3.amazonaws.com/heroku-finagle/release", "heroku-finagle-snapshot" at "https://raw.github.com/ryanbrainard/repo")
+resolvers ++= Seq("twitter.com" at "http://maven.twttr.com", "newrelic" at "http://download.newrelic.com", "heroku-finagle" at "http://s3.amazonaws.com/heroku-finagle/release", "heroku-finagle-snapshot" at "https://raw.github.com/ryanbrainard/repo/master")
 
 libraryDependencies ++= Seq(
 	"com.twitter" %% "finagle-core" % "6.2.1" withSources(),
