@@ -1,10 +1,10 @@
-import com.typesafe.sbt.SbtStartScript
+import com.typesafe.startscript.StartScriptPlugin
 
-seq(SbtStartScript.startScriptForClassesSettings:_*)
+seq(StartScriptPlugin.startScriptForClassesSettings: _*)
 
 name := "s3pository"
 
-version := "1.0"
+version := "1.1"
 
 scalaVersion := "2.9.2"
 
