@@ -11,6 +11,7 @@ import java.net.InetSocketAddress
 
 import util.Properties
 import com.heroku.finagle.aws.S3.{S3Secret, S3Key}
+import com.twitter.finagle.stats.NullStatsReceiver
 
 
 object S3rver {
@@ -110,7 +111,7 @@ object S3rver {
     val logConf = new LoggerConfig {
       node = ""
       level = Logger.levelNames.get(Properties.envOrElse("LOG_LEVEL", "INFO"))
-      handlers = List(new ConsoleHandlerConfig, new NewRelicLogHandlerConfig)
+      handlers = List(new ConsoleHandlerConfig)
     }
     logConf.apply()
     val supressNettyWarning = new LoggerConfig {
@@ -125,8 +126,7 @@ object S3rver {
     val log = Logger.get("S3Server-Main")
     log.warning("Starting S3rver")
 
-    //implicit val stats = NullStatsReceiver
-    val stats = NewRelicStatsReceiver
+    val stats = NullStatsReceiver
 
     /*Build the Service*/
     val service = new ProxyService(proxies ++ grailsProxies ++ clojureProxies, List(all, grails, clojure), doPrimeCaches, s3key, s3secret, stats)

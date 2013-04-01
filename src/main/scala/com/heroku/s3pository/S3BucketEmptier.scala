@@ -19,7 +19,7 @@ object S3BucketEmptier {
     val logConf = new LoggerConfig {
       node = ""
       level = Logger.levelNames.get(Properties.envOrElse("LOG_LEVEL", "INFO"))
-      handlers = List(new ConsoleHandlerConfig, new NewRelicLogHandlerConfig)
+      handlers = List(new ConsoleHandlerConfig)
     }
     logConf.apply()
     val supressNettyWarning = new LoggerConfig {
