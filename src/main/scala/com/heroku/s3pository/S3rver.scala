@@ -62,7 +62,8 @@ object S3rver {
     ivyDatabinder,
     mavenTwitter,
     mavenGlassfish,
-    clojars
+    clojars,
+    node
   )
 
   /*Wire up the proxied repositories for Grails*/
