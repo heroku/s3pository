@@ -41,6 +41,7 @@ object S3rver {
   val grailsCentral = ProxiedRepository("/grails-central", "repo.grails.org", "/grails/core", s3prefix + "-proxy-grails-core")
   val grailsPlugins = ProxiedRepository("/grails-plugins", "repo.grails.org", "/grails/plugins", s3prefix + "-proxy-grails-plugins").include("/org/grails/plugins")
   val clojars = ProxiedRepository("/clojars", "clojars.org", "/repo", s3prefix + "-proxy-clojars")
+  val node = ProxiedRepository("/node", "nodejs.org", "/dist", s3prefix + "-proxy-node")
   //val grailsPluginsSvn = ProxiedRepository("/grails-plugins-svn", "plugins.grails.org", "", s3prefix + "-proxy-grails-plugins-svn")
 
   /*Wire up the proxied repositories*/
