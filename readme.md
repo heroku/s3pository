@@ -1,4 +1,9 @@
-#s3pository - Proxy Server with S3 caching
+# s3pository - Proxy Server with S3 caching
+
+This service is **DEPRECATED** and has been **RETIRED**. Download Java, Scala,
+Play!, Node.js, and Clojure assets from the first party repository instead.
+
+---
 
 This server is used to speed up builds of Java, Scala, Play!, and Node.js on Heroku.  It acts as a caching proxy server to several popular repositories.
 
